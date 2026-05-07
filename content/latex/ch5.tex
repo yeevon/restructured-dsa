@@ -1,0 +1,1700 @@
+\documentclass[11pt]{article}
+\input{../../notes-style.tex}
+
+\title{CS 300 -- Chapter 5 Lectures\\\large Hash Tables and Cryptographic Hashing}
+\author{Jose de Lima}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{ideabox}[Chapter map]
+\textbf{Where this sits in CS 300.} Until now, lookup costs $O(n)$
+(linear search) or $O(\log n)$ (binary search, balanced trees). Chapter 5
+introduces \textbf{hashing}, the technique that takes lookup \emph{on
+average} down to $O(1)$. The catch is everywhere: bad hash functions,
+full tables, adversarial inputs, and resizing. Mastering hash tables is
+mastering the tradeoffs that make $O(1)$ possible.
+
+\textbf{What you add to your toolkit here:}
+\begin{itemize}
+    \item \textbf{Hash function} as a deterministic $key \to index$ map,
+          with the requirements (fast, well-distributed, deterministic).
+    \item \textbf{Collision resolution}: chaining (buckets are linked
+          lists) vs.\ open addressing (linear / quadratic probing,
+          double hashing).
+    \item \textbf{Load factor} $\alpha = n / \text{capacity}$: the single
+          number that predicts whether your table is fast or sad.
+    \item \textbf{Resizing} (rehashing) as the mechanism that keeps
+          amortized $O(1)$ honest.
+    \item \textbf{Direct hashing} -- the degenerate case where keys
+          \emph{are} indices. Works when the key space is dense and
+          small.
+    \item \textbf{Cryptographic hashing} -- same mathematical object,
+          entirely different requirements (collision resistance,
+          preimage resistance, slowness). Don't confuse the two.
+\end{itemize}
+
+\textbf{Mastery checklist} -- you should be able to, without references:
+\begin{enumerate}
+    \item Define a hash function and state the three desiderata (fast,
+          deterministic, uniform).
+    \item Given a key stream, draw the resulting table under chaining
+          AND under linear probing, starting from capacity 7.
+    \item State the expected cost of insert/find/remove under chaining
+          and under open addressing, and say what happens as $\alpha$
+          approaches 1.
+    \item Compute the mid-square or multiplication-method hash of a
+          concrete key by hand.
+    \item Explain \emph{primary clustering} (linear probing) and
+          \emph{secondary clustering} (quadratic probing) and how double
+          hashing escapes both.
+    \item Describe the rehash procedure: when it triggers, what the new
+          capacity is, and why you can't just copy the old table -- you
+          must rehash every element.
+    \item Say why \texttt{std::unordered\_map} uses chaining (not open
+          addressing) and what that buys vs.\ costs.
+    \item Distinguish cryptographic and data-structure hashing, and name
+          one attack (e.g., hash flooding) that bridges them.
+\end{enumerate}
+
+\textbf{Looking ahead.} Hash tables will show up in graph algorithms as
+``visited'' sets (opt.\ ch.~10), in DP as memoization tables, and as the
+default \emph{map} container in every production C++ codebase
+(\texttt{std::unordered\_map}). Chapter 6 (BSTs) gives you the
+\emph{ordered} alternative -- slower on average, but with guarantees
+hash tables lack.
+\end{ideabox}
+
+\section{5.1 Hash Tables: The Big Idea}
+
+Every data structure you've seen so far has been one of two shapes:
+a \emph{list} (search costs $O(n)$) or a \emph{sorted array} (search
+costs $O(\log n)$). A hash table does something radically different.
+Instead of searching for a key, it \emph{computes} where the key
+should live. Search, insert, and remove become $O(1)$ on
+average --- constant time, regardless of how many items are
+stored.
+
+\begin{defnbox}[Hash table]
+A data structure that stores items in an array and uses a
+\emph{hash function} to compute, from each item's \emph{key}, the
+array index (``bucket'') where the item should be stored. Lookup,
+insertion, and removal are therefore one arithmetic computation
+plus one array access --- $O(1)$ on average.
+\end{defnbox}
+
+\begin{notebox}[Hash tables implement the Set ADT]
+Recall the Sequence-vs-Set framing from \textsection 4.1: every
+container belongs to one of two interface families. \textbf{Sequence}
+keeps items at caller-chosen positions ($i = 0, 1, \ldots, n-1$);
+\textbf{Set} keeps items at positions chosen by the data structure
+itself, looked up by an \emph{intrinsic key}. ch.~4 built Sequence
+implementations (lists, stacks, queues, deques). \emph{This chapter
+and ch.~6 build Set implementations.}
+
+A hash table is a Set: the operations are \texttt{find(k)},
+\texttt{insert(x)}, \texttt{delete(k)} --- never ``insert at position
+$i$'' or ``the third item.'' In C++:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{std::unordered\_set<K>} --- the bare Set: ``is key
+        $k$ present?''
+  \item \texttt{std::unordered\_map<K,V>} --- a \emph{dictionary}
+        (Set without the ordered ops, in OCW terminology): ``what
+        value is associated with key $k$?''
+\end{itemize}
+ch.~5 covers the chained and open-addressed implementations of the
+Set interface. \textsection 5.8 covers the special case where keys
+\emph{are} small integers and the hash function is the identity ---
+the trivial Set implementation. ch.~6 covers BSTs, the alternative
+Set implementation that gives up O(1) lookup in exchange for
+ordered operations (\texttt{find\_min}, \texttt{find\_next(k)}).
+\end{notebox}
+
+\subsection*{The core trick}
+
+Suppose you have an array of size 10 and you want to store the
+key 25. Where does it go?
+
+\begin{quote}
+\texttt{index = 25 \% 10 = 5}
+\end{quote}
+
+Store it at \texttt{array[5]}. To look it up later: compute the
+same index, read that slot. No search. No comparison loop. The
+work of ``finding'' has been replaced by a calculation that
+locates the element directly.
+
+\begin{examplebox}[Simplest possible hash table]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+constexpr size_t N = 10;
+int table[N];
+
+void insert(int key) { table[key % N] = key; }
+bool contains(int key) { return table[key % N] == key; }
+\end{lstlisting}
+\end{examplebox}
+
+Three lines, $O(1)$ in both operations. This is the entire idea.
+Everything else in this chapter --- hash functions, collisions,
+chaining, probing, load factor --- is about making this trick
+\emph{actually work} in practice when keys don't divide up so
+neatly.
+
+\subsection*{Why not just use a giant array?}
+
+If keys are small integers, you already can. An array of size
+$2^{32}$ indexed directly by \texttt{int} keys works --- but
+that's 16 GB of memory to hold possibly a handful of values.
+Hash tables compress a large \emph{potential} key space into a
+small array, trading perfect placement for practical memory use.
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Approach} & \textbf{Lookup} & \textbf{Space} \\
+\hline
+Direct array (key = index)       & $O(1)$ & $O(K)$ where K = key range \\
+Sorted array + binary search     & $O(\log n)$ & $O(n)$ \\
+Linked list                      & $O(n)$ & $O(n)$ \\
+Hash table                       & $O(1)^*$ & $O(n)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent $^*$ average case; worst case can degrade, see later sections.
+
+The hash table gets you array-speed lookup at list-space cost.
+That combination is so valuable that hash tables are the backbone
+of almost every real-world fast key-value store: JavaScript
+objects, Python dicts, Java \texttt{HashMap}, Redis, DNS caches,
+database indexes (sometimes), compiler symbol tables, the list
+goes on.
+
+\subsection*{Vocabulary}
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Term} & \textbf{Meaning} \\
+\hline
+Key            & The value used to look up an item \\
+Value          & The data associated with the key (often absent --- just a set) \\
+Bucket         & A slot in the underlying array \\
+Hash function  & \texttt{key} $\to$ \texttt{bucket index} \\
+Collision      & Two keys that hash to the same bucket \\
+Load factor    & $n$ items / $m$ buckets --- a density measure \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{ideabox}[Collisions are the entire problem]
+The naive hash table above breaks the instant two keys hash to
+the same bucket. With 10 buckets and key \texttt{\% 10}, keys 25
+and 75 both land at index 5 --- the second insert either
+overwrites the first or needs a plan B. The rest of the chapter
+is ``plan B'': different strategies for resolving collisions. The
+big split is \emph{chaining} (each bucket holds a list of items)
+vs. \emph{open addressing} (find another empty bucket in the
+array). Each has different cost/space tradeoffs.
+\end{ideabox}
+
+\begin{warnbox}[$O(1)$ is the \emph{average} case]
+A hash table's $O(1)$ lookup is the average case under a good
+hash function and reasonable load. Worst case, every key hashes
+to the same bucket and lookup degrades to $O(n)$ --- the same as
+a linked list. Two defenses: pick a good hash function
+(distribution matters), and keep the load factor low (resize the
+array when it fills up). Sections 5.5--5.8 make this concrete.
+\end{warnbox}
+
+\begin{notebox}[Hash tables vs. STL]
+C++ gives you two hash-based containers in \texttt{<unordered\_map>}
+and \texttt{<unordered\_set>}. Both are chaining hash tables. The
+older \texttt{std::map} / \texttt{std::set} are \emph{balanced
+BSTs} (red-black trees, chapter 6), which is why their operations
+are $O(\log n)$ instead of $O(1)$. ``Ordered'' in the name is the
+giveaway: iterating a \texttt{map} gives sorted order; iterating
+an \texttt{unordered\_map} gives whatever order the hash function
+happened to produce. If you don't need ordering, unordered is
+usually faster.
+\end{notebox}
+
+\begin{ideabox}[Chapter 5 roadmap]
+This chapter is structured as: hash table idea $\to$ hash
+functions $\to$ collision resolution (two strategies) $\to$
+cost analysis and load factor. By the end, you'll be able to
+implement one from scratch and reason about its performance.
+The key insight to hold onto: \emph{a hash table is an array
+accessed through a function, not through a search loop.}
+Everything else is engineering around that idea.
+\end{ideabox}
+
+\section{5.2 Chaining}
+
+\emph{Chaining} is the first collision-resolution strategy. The
+idea is almost embarrassingly simple: if two keys want the same
+bucket, don't pick a winner --- let both live there, in a list.
+
+\begin{defnbox}[Chaining]
+A collision-resolution strategy in which each bucket stores a
+\emph{list} of items rather than a single item. On insertion,
+the new item is appended to the bucket's list; on lookup, the
+bucket's list is searched for the matching key.
+\end{defnbox}
+
+\subsection*{The mental model}
+
+Picture the hash table as an array of \emph{list heads} instead
+of an array of values. Each slot is either \texttt{nullptr}
+(empty) or points to a chain of nodes that all hashed to that
+index.
+
+\begin{center}
+\begin{tabular}{|c|l|}
+\hline
+\textbf{Bucket} & \textbf{Chain} \\
+\hline
+0 & \texttt{nullptr} \\
+1 & 21 $\to$ 31 $\to$ 51 \\
+2 & \texttt{nullptr} \\
+3 & 13 \\
+4 & 24 $\to$ 74 \\
+\hline
+\end{tabular}
+\end{center}
+
+Every chain only contains keys that hashed to that index, so the
+search step only compares against ``nearby'' items --- ideally
+just one or two, not the entire table.
+
+\subsection*{Algorithms}
+
+Each of the three operations becomes: (1) hash the key to find
+the bucket, (2) do the list-level operation on that bucket's
+chain.
+
+\begin{examplebox}[Chained hash table operations]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+template <typename T>
+class ChainedHashTable {
+    struct Node { T data; Node* next; };
+    std::vector<Node*> table;
+    size_t n_ = 0;
+
+    size_t hash(const Key& k) const {
+        return std::hash<Key>{}(k) % table.size();
+    }
+
+public:
+    explicit ChainedHashTable(size_t m) : table(m, nullptr) {}
+
+    bool contains(const Key& k) const {
+        for (Node* p = table[hash(k)]; p; p = p->next)
+            if (p->data.key == k) return true;
+        return false;
+    }
+
+    void insert(const T& item) {
+        size_t b = hash(item.key);
+        for (Node* p = table[b]; p; p = p->next)
+            if (p->data.key == item.key) { p->data = item; return; }
+        table[b] = new Node{item, table[b]};  // prepend
+        ++n_;
+    }
+
+    bool remove(const Key& k) {
+        size_t b = hash(k);
+        Node** cur = &table[b];
+        while (*cur) {
+            if ((*cur)->data.key == k) {
+                Node* dead = *cur;
+                *cur = dead->next;
+                delete dead;
+                --n_;
+                return true;
+            }
+            cur = &(*cur)->next;
+        }
+        return false;
+    }
+};
+\end{lstlisting}
+\end{examplebox}
+
+Two implementation notes: \texttt{insert} checks for duplicates
+first because most hash-table APIs are ``unique-key'' (insert acts
+as upsert), and \texttt{remove} uses the \texttt{Node**} trick
+from chapter 4 so the same code handles head and interior removal
+without a special case.
+
+\subsection*{Cost}
+
+\begin{center}
+\begin{tabular}{|l|c|c|l|}
+\hline
+\textbf{Operation} & \textbf{Average} & \textbf{Worst} & \textbf{Notes} \\
+\hline
+\texttt{insert}   & $O(1 + \alpha)$ & $O(n)$ & Chain walk to check duplicate \\
+\texttt{contains} & $O(1 + \alpha)$ & $O(n)$ & Chain walk to compare keys \\
+\texttt{remove}   & $O(1 + \alpha)$ & $O(n)$ & Chain walk to locate node \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent $\alpha = n/m$ = \emph{load factor} = average chain
+length. When $\alpha$ is a small constant (say, $\leq 1$), every
+operation is effectively $O(1)$. When $\alpha$ grows, operations
+slow linearly. Section 5.6 discusses how to keep $\alpha$ bounded
+by resizing.
+
+\begin{ideabox}[The key insight]
+With a good hash function and a reasonably-sized table, chains
+stay short --- often length 0, 1, or 2. So even though the
+\emph{worst} case is $O(n)$, the \emph{average} case is a
+handful of comparisons. The $O(1)$ claim for hash tables is
+really ``$O(1 + \alpha)$ where $\alpha$ is kept small by good
+engineering.''
+\end{ideabox}
+
+\subsection*{Pros and cons}
+
+\begin{center}
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Pro} & Never fills up --- you can keep inserting past the
+table size, chains just grow longer. \\
+\textbf{Pro} & Removal is easy --- just unsplice a list node. \\
+\textbf{Pro} & High load factors tolerable (still works at $\alpha > 1$). \\
+\textbf{Con} & Extra memory per item (one \texttt{next} pointer per node). \\
+\textbf{Con} & Cache-unfriendly --- chain walks follow pointers all
+over the heap, same as plain linked lists. \\
+\textbf{Con} & Extra allocation on every insert (one \texttt{new Node}). \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[A degenerate hash function degrades to a list]
+If every key hashes to the same bucket, chaining leaves you with
+a single linked list of length $n$ --- and every operation is
+$O(n)$. This is not hypothetical: some attackers exploit
+predictable hash functions to deliberately trigger this
+(``hash-collision DoS''). Modern libraries use randomized hash
+seeds to make collision attacks impractical. If you roll your
+own hash function, be aware that ``obvious'' functions (like
+\texttt{key \% m} with adversarial keys) can produce this
+worst-case behavior.
+\end{warnbox}
+
+\begin{notebox}[Why $O(1+\alpha)$? The simple uniform hashing assumption]
+The cost claim ``find takes $O(1+\alpha)$ on average'' isn't a
+slogan; it's a theorem (CLRS Ch 11.2, Theorems 11.1--11.2). The
+proof rests on one assumption:
+
+\textbf{Simple uniform hashing.} Any given key is equally likely
+to hash to any of the $m$ slots, independently of where any other
+key has hashed.
+
+Under this assumption, the expected length of bucket $T[h(k)]$ is
+$E[n_{h(k)}] = n/m = \alpha$. So an unsuccessful search examines
+$\alpha$ elements on average, plus $O(1)$ to compute the hash and
+index --- total $\Theta(1 + \alpha)$. A symmetric argument (with
+slightly more bookkeeping for the ``which list is searched''
+probability) gives the same $\Theta(1 + \alpha)$ bound for
+successful search.
+
+Two consequences worth internalizing:
+\begin{itemize}[leftmargin=*]
+  \item If you keep $\alpha$ bounded by a constant (which is what
+        resizing in \textsection 5.6 does), the $1 + \alpha$ term
+        is $O(1)$. \emph{This is the entire reason hash tables
+        average $O(1)$.}
+  \item The open-addressing variants in \textsection 5.3--\textsection 5.5
+        all use the same simple-uniform-hashing assumption. Their
+        per-strategy cost formulas (linear's
+        $\frac{1}{2}(1 + 1/(1-\alpha))$, double-hashing's tighter
+        bounds) come from analyzing different probe sequences
+        \emph{under that same assumption}.
+\end{itemize}
+The assumption is strong --- real hash functions don't perfectly
+satisfy it on all inputs. \textsection 5.7 shows what hash
+functions try to do to approximate it; \textsection 5.7 (universal
+hashing subsection) shows how to make a probabilistic guarantee
+without the assumption at all.
+\end{notebox}
+
+\begin{notebox}[What the STL does]
+\texttt{std::unordered\_map} and \texttt{std::unordered\_set} are
+\emph{required} by the standard to use chaining (separate
+chaining, in formal terminology). This is a correctness
+requirement, not just an implementation choice: the standard
+guarantees that inserting doesn't invalidate iterators to other
+elements, which essentially forces per-bucket lists. The
+alternative, open addressing (next section), moves elements
+around on insertion and would break iterator stability.
+\end{notebox}
+
+\begin{ideabox}[The contrast with open addressing]
+Chaining solves collisions by \emph{going outside the array} ---
+add extra memory in the form of chains. The next section covers
+the opposite approach: \emph{stay inside the array} and find a
+different bucket for the collider. Both get $O(1)$ average, with
+different space/cache tradeoffs. Know both; the choice depends
+on context.
+\end{ideabox}
+
+\section{5.3 Linear Probing}
+
+\emph{Linear probing} is the first flavor of \emph{open
+addressing} --- the ``stay inside the array'' approach to
+collisions. When the computed bucket is occupied, walk forward
+through the array one slot at a time until you find an empty
+one. That's it. Simple to describe, surprisingly subtle to get
+right.
+
+\begin{defnbox}[Linear probing]
+A collision-resolution strategy that stores all items directly in
+the hash table array. On collision, it checks bucket $h+1$, then
+$h+2$, then $h+3$, \ldots (wrapping around the end), until an
+empty bucket is found. The sequence $h, h+1, h+2, \ldots$ is
+called the \emph{probe sequence}.
+\end{defnbox}
+
+\subsection*{Why it's interesting}
+
+Chaining (5.2) allocates a new node per item. Linear probing does
+\emph{not} --- every item lives in the fixed array itself.
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Aspect} & \textbf{Chaining} & \textbf{Linear probing} \\
+\hline
+Extra memory per item & 1 pointer  & 0 \\
+Allocations on insert & 1 \texttt{new Node} & 0 \\
+Cache behavior        & Poor (heap jumps) & Excellent (contiguous) \\
+Can overflow?         & Never     & Yes (array full $\Rightarrow$ insert fails) \\
+Removal               & Unsplice list node & Tombstone (see below) \\
+\hline
+\end{tabular}
+\end{center}
+
+For small-to-medium tables, linear probing typically \emph{wins}
+on real hardware: no allocation, no pointer chasing, and the CPU
+prefetches the next probe slot because it's literally the next
+cache line. This is why many high-performance hash tables (Google's
+\texttt{dense\_hash\_map}, Robin Hood hashing, Swiss tables) are
+built on open addressing rather than chaining.
+
+\subsection*{Insert}
+
+\begin{examplebox}[Linear-probe insert]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+bool insert(int key) {
+    size_t start = hash(key) % N;
+    for (size_t i = 0; i < N; ++i) {
+        size_t b = (start + i) % N;
+        if (table[b].state != OCCUPIED) {
+            table[b] = { key, OCCUPIED };
+            return true;
+        }
+        if (table[b].key == key) return false; // duplicate
+    }
+    return false;  // table full
+}
+\end{lstlisting}
+\end{examplebox}
+
+The \texttt{\% N} wrap makes the probe sequence circular --- if
+you hit the end of the array, you keep going from index 0.
+
+\subsection*{The tombstone problem}
+
+Removal on an open-addressed table is \emph{not} just ``mark the
+bucket empty.'' Consider:
+
+\begin{enumerate}[leftmargin=*]
+    \item Insert 25 (bucket 5).
+    \item Insert 35 (bucket 5 occupied, probe to 6).
+    \item Remove 25 --- mark bucket 5 empty.
+    \item Search for 35 --- check bucket 5, find it empty, stop
+          searching. Returns ``not found.'' \textbf{But 35 is
+          there}, in bucket 6.
+\end{enumerate}
+
+To fix this, open-addressed tables distinguish \emph{two} kinds
+of empty:
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{State} & \textbf{Meaning} \\
+\hline
+\texttt{EMPTY\_SINCE\_START} & Never held an item; search can stop here \\
+\texttt{OCCUPIED}            & Currently holds an item \\
+\texttt{EMPTY\_AFTER\_REMOVAL} (tombstone) & Was occupied; search continues past \\
+\hline
+\end{tabular}
+\end{center}
+
+The tombstone preserves the ``I was here'' information that the
+probe sequence needs. Insertions treat tombstones as empty (can
+reuse the slot). Searches treat tombstones as occupied (keep
+probing past).
+
+\begin{warnbox}[Tombstones never clean themselves up]
+A long-lived table with many insertions and removals can fill up
+with tombstones, slowing searches to a crawl. The fix is to
+\emph{rehash}: allocate a fresh table, re-insert every live item,
+throw the old table away. The tombstones are gone, probes are
+short again. Sections 5.6--5.8 discuss when and how to trigger
+this.
+\end{warnbox}
+
+\subsection*{Search}
+
+\begin{examplebox}[Linear-probe search]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+int* find(int key) {
+    size_t start = hash(key) % N;
+    for (size_t i = 0; i < N; ++i) {
+        size_t b = (start + i) % N;
+        if (table[b].state == EMPTY_SINCE_START) return nullptr;
+        if (table[b].state == OCCUPIED && table[b].key == key)
+            return &table[b].key;
+        // tombstone: keep looking
+    }
+    return nullptr;
+}
+\end{lstlisting}
+\end{examplebox}
+
+The three termination conditions matter: (1) found a match,
+return it; (2) hit a never-occupied slot, definitely not present;
+(3) probed every bucket, not present.
+
+\subsection*{Cost and load factor}
+
+Linear probing's cost depends dramatically on how full the table
+is. Let $\alpha = n/m$ (load factor).
+
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Load factor $\alpha$} & \textbf{Avg probes (successful)} & \textbf{Feel} \\
+\hline
+0.5  & $\approx 1.5$  & Fast \\
+0.75 & $\approx 2.5$  & Still OK \\
+0.9  & $\approx 5.5$  & Getting sluggish \\
+0.95 & $\approx 10.5$ & Noticeable \\
+0.99 & $\approx 50$   & Disaster \\
+\hline
+\end{tabular}
+\end{center}
+
+These numbers aren't linear in $\alpha$ --- they grow like
+$\frac{1}{1 - \alpha}$ (Knuth's analysis). That's why open-
+addressed tables typically enforce a much lower max load factor
+than chained ones: 0.5--0.75 is common for linear probing versus
+1.0+ for chaining.
+
+\begin{ideabox}[Primary clustering]
+Linear probing has a pathological behavior called
+\emph{primary clustering}: once a run of occupied slots forms,
+any key that hashes \emph{into} that run will extend it, making
+it more likely to catch future keys too. Clusters grow like
+snowballs. This is why quadratic probing (5.4) and double hashing
+(5.5) exist --- they break the cluster-growth pattern by making
+probe sequences depend on the key, not just the starting bucket.
+\end{ideabox}
+
+\begin{notebox}[Why linear probing is still worth using]
+Despite primary clustering, linear probing often beats ``smarter''
+probe sequences in practice because of cache behavior. Every
+probe is the next cache line --- no pointer chasing, no random
+access. Quadratic probing and double hashing have
+theoretically-shorter probe sequences but jump around the array,
+busting the cache. At load factors under 0.75, linear probing's
+wall-clock speed is hard to beat.
+\end{notebox}
+
+\begin{ideabox}[Key takeaways]
+Open addressing trades ``cheap removal'' for ``no allocation''
+and ``great cache behavior.'' The tombstone mechanism is the
+essential correctness fix. Load factor discipline is the
+essential performance fix --- probe counts explode near $\alpha =
+1$. The next sections show variants of probing that keep the
+same flavor but sidestep primary clustering.
+\end{ideabox}
+
+\section{5.4 Quadratic Probing}
+
+Linear probing's flaw, remember, is \emph{primary clustering}:
+once a run of occupied buckets forms, any key that hashes into
+that run lengthens it, snowballing the problem. \emph{Quadratic
+probing} sidesteps clustering by using a probe sequence whose
+gaps grow with each step.
+
+\begin{defnbox}[Quadratic probing]
+An open-addressing collision-resolution strategy where the probe
+sequence for a key $k$ is
+$$\text{bucket}_i = (h(k) + c_1 i + c_2 i^2) \bmod m$$
+for $i = 0, 1, 2, \ldots$ and chosen constants $c_1, c_2$. The
+quadratic term makes successive probes spread out instead of
+walking contiguously.
+\end{defnbox}
+
+\subsection*{The probe pattern}
+
+With $c_1 = 0, c_2 = 1$ (the simplest common choice), the probe
+sequence from a starting bucket $h$ visits:
+
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+$i$ & Offset $i^2$ & Bucket \\
+\hline
+0 & 0  & $h$ \\
+1 & 1  & $h+1$ \\
+2 & 4  & $h+4$ \\
+3 & 9  & $h+9$ \\
+4 & 16 & $h+16$ \\
+\hline
+\end{tabular}
+\end{center}
+
+The gaps grow: 1, 3, 5, 7, 9, \ldots The probe sequence jumps
+past nearby occupied slots quickly, so even if there's a cluster
+starting near $h$, it gets skipped over rather than extended.
+
+\begin{examplebox}[Quadratic-probe insert]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+bool insert(int key) {
+    size_t h = hash(key);
+    for (size_t i = 0; i < N; ++i) {
+        size_t b = (h + c1 * i + c2 * i * i) % N;
+        if (table[b].state != OCCUPIED) {
+            table[b] = { key, OCCUPIED };
+            return true;
+        }
+        if (table[b].key == key) return false; // duplicate
+    }
+    return false;  // full or unreachable
+}
+\end{lstlisting}
+\end{examplebox}
+
+Everything else (tombstones, search, remove) carries over from
+linear probing. The only change is the probe-step formula.
+
+\subsection*{Primary clustering: solved. Secondary clustering: new problem}
+
+Quadratic probing eliminates primary clustering (adjacent keys no
+longer share probe paths). But two keys that hash to the same
+\emph{starting} bucket will still follow the exact same probe
+sequence --- that's \emph{secondary clustering}. Less severe than
+primary, but not gone.
+
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Strategy} & \textbf{Primary clustering} & \textbf{Secondary clustering} \\
+\hline
+Linear probing    & Yes  & Yes \\
+Quadratic probing & No   & Yes \\
+Double hashing (5.5) & No & No \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[Quadratic probing may not visit every bucket]
+With a poorly-chosen $N$ and constants $c_1, c_2$, the probe
+sequence can cycle through a small set of buckets forever and
+miss the rest of the table --- insert fails even though empty
+buckets exist. There's a theorem: if $N$ is prime and the load
+factor is less than 0.5, the probe sequence \emph{is} guaranteed
+to visit $N/2$ distinct buckets. So: pick prime $N$, keep
+$\alpha \leq 0.5$. If you need higher load factors, use linear
+probing or double hashing instead.
+\end{warnbox}
+
+\subsection*{Choosing constants}
+
+$c_1 = 0, c_2 = 1$ gives you $h + i^2$, which has the guarantee
+above. $c_1 = 1, c_2 = 1$ gives $h + i + i^2$, which is the form
+used in the textbook pseudocode; it still works but the theoretical
+guarantees depend on specific $N$ values. When in doubt, prefer
+the simpler $h + i^2$ version with prime table sizes.
+
+\begin{examplebox}[Triangular-number probing]
+A well-known trick uses $c_1 = c_2 = 1/2$, giving probes at
+offsets $\frac{i(i+1)}{2}$ (the triangular numbers: 0, 1, 3, 6,
+10, 15, \ldots). This form visits \emph{every} bucket when $N$
+is a power of 2 --- a major convenience because hash tables often
+use power-of-2 sizes for fast modulo via bit masking. This is the
+form used in Java's older hash tables and many game-engine hash
+maps.
+\end{examplebox}
+
+\subsection*{Cost}
+
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Load factor $\alpha$} & \textbf{Avg probes (successful)} & \textbf{Notes} \\
+\hline
+0.5  & $\approx 1.4$  & Slightly better than linear at 0.5 \\
+0.75 & $\approx 2.0$  & Noticeably better \\
+0.9  & $\approx 3.2$  & Much better than linear's 5.5 \\
+\hline
+\end{tabular}
+\end{center}
+
+At high load factors, quadratic probing substantially outperforms
+linear probing. At low load factors, the difference is minor
+and linear's cache-friendliness can win on wall-clock time.
+
+\begin{ideabox}[Quadratic vs linear: the real tradeoff]
+Linear probing: simple, cache-friendly, suffers at high load.
+Quadratic probing: spreads clusters, works better at moderate
+load, slightly less cache-friendly (the jumps in the probe
+sequence skip cache lines). In modern hash table implementations
+that push load factors close to 1, the cache penalty is worth
+paying to avoid primary clustering. For textbook problems and
+moderate loads, either is fine.
+\end{ideabox}
+
+\begin{notebox}[Nobody in production uses ``pure'' quadratic probing]
+Real-world implementations combine ideas: Google's Abseil Swiss
+tables use linear probing with SSE-accelerated parallel
+comparison; Rust's \texttt{HashMap} uses Robin Hood hashing (a
+linear-probing variant that equalizes probe lengths); CPython's
+\texttt{dict} uses a perturbation scheme that's neither pure
+linear nor pure quadratic. The textbook probes are pedagogy; the
+real insight is ``open addressing plus anything that breaks
+clustering.''
+\end{notebox}
+
+\section{5.5 Double Hashing}
+
+Linear and quadratic probing both suffer \emph{secondary
+clustering}: any two keys that hash to the same starting bucket
+follow the same probe sequence. \emph{Double hashing} fixes this
+by making the probe \emph{step size} also depend on the key ---
+so two keys starting at the same bucket diverge immediately.
+
+\begin{defnbox}[Double hashing]
+An open-addressing strategy that uses two hash functions. The
+probe sequence for a key $k$ is
+$$\text{bucket}_i = (h_1(k) + i \cdot h_2(k)) \bmod m$$
+for $i = 0, 1, 2, \ldots$. $h_1$ determines the starting bucket;
+$h_2$ determines the step size between probes.
+\end{defnbox}
+
+\subsection*{The idea, geometrically}
+
+Think of each key as having its own ``rhythm'' for walking
+through the table. Linear probing: everyone steps by 1.
+Quadratic: everyone's step pattern is $1, 4, 9, \ldots$.
+\emph{Double hashing: each key's step depends on the key itself.}
+
+Two keys can collide on their starting bucket and \emph{still}
+separate instantly because their $h_2$ values differ. That's the
+whole trick.
+
+\subsection*{Example}
+
+Let $m = 11$, $h_1(k) = k \bmod 11$, $h_2(k) = 5 - (k \bmod 5)$.
+
+\begin{center}
+\begin{tabular}{|c|c|c|l|}
+\hline
+\textbf{Key $k$} & $h_1(k)$ & $h_2(k)$ & \textbf{Probe sequence} \\
+\hline
+55  & 0   & 5 & 0, 5, 10, 4, 9, 3, \ldots \\
+66  & 0   & 4 & 0, 4, 8, 1, 5, \ldots \\
+\hline
+\end{tabular}
+\end{center}
+
+Both keys start at bucket 0, but after the first collision they
+walk in entirely different directions. That's why double hashing
+approximates ``uniform hashing'' --- the theoretical ideal where
+every key's probe sequence is a random permutation of buckets.
+
+\subsection*{Implementation}
+
+\begin{examplebox}[Double-hashing insert]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+bool insert(int key) {
+    size_t h1 = hash1(key) % N;
+    size_t h2 = hash2(key);   // must be nonzero, coprime to N
+    for (size_t i = 0; i < N; ++i) {
+        size_t b = (h1 + i * h2) % N;
+        if (table[b].state != OCCUPIED) {
+            table[b] = { key, OCCUPIED };
+            return true;
+        }
+        if (table[b].key == key) return false; // duplicate
+    }
+    return false;  // table full
+}
+\end{lstlisting}
+\end{examplebox}
+
+Search and remove use the same probe formula with the usual
+tombstone rules. The only new concern is \emph{choosing $h_2$
+correctly}.
+
+\subsection*{The $h_2$ requirement: never zero, always coprime to $m$}
+
+If $h_2(k) = 0$, the probe sequence stays stuck at $h_1(k)$
+forever --- infinite loop. Always enforce $h_2(k) \neq 0$.
+
+If $h_2(k)$ shares a factor with $m$ (table size), the probe
+sequence visits only a subset of buckets --- you can fail to
+insert even with empty buckets available. The standard fix:
+\textbf{make $m$ a prime and design $h_2$ to always return a
+value in $[1, m-1]$}. A common construction:
+
+$$h_2(k) = p - (k \bmod p), \text{ where } p < m \text{ is prime}$$
+
+This guarantees $1 \leq h_2(k) \leq p < m$, and since $m$ is
+prime, $\gcd(h_2(k), m) = 1$ always.
+
+\begin{warnbox}[Powers of 2 are incompatible with double hashing]
+If $m$ is a power of 2, the only values coprime to $m$ are the
+odd ones. So $h_2$ has to always return an odd number --- often
+enforced by $h_2(k) = 2 \cdot g(k) + 1$. This works but limits
+$h_2$'s range. Most double-hashing implementations use prime
+table sizes for this reason, even though modulo-by-prime is
+slower than modulo-by-power-of-2.
+\end{warnbox}
+
+\subsection*{Cost}
+
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Load factor $\alpha$} & \textbf{Avg probes (successful)} & \textbf{Notes} \\
+\hline
+0.5  & $\approx 1.4$   & Matches quadratic \\
+0.75 & $\approx 1.8$   & Better than quadratic \\
+0.9  & $\approx 2.6$   & Significantly better \\
+0.95 & $\approx 3.2$   & Holds up where others collapse \\
+\hline
+\end{tabular}
+\end{center}
+
+The cost formula is $\frac{1}{\alpha} \ln \frac{1}{1-\alpha}$ --
+essentially the theoretical best achievable by any open-
+addressing scheme. Double hashing's probe distribution is
+statistically close to uniform random, which is what the analysis
+assumes.
+
+\begin{center}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Strategy} & \textbf{Primary clusters?} & \textbf{Secondary clusters?} & \textbf{Cache-friendly?} \\
+\hline
+Chaining          & ---  & ---  & No \\
+Linear probing    & Yes  & Yes  & Yes \\
+Quadratic probing & No   & Yes  & Somewhat \\
+Double hashing    & No   & No   & No \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{ideabox}[Why double hashing isn't always used]
+Double hashing has the best theoretical probe counts, yet most
+modern hash table implementations use linear probing. The reason
+is cache. Double hashing's jumps across the table are random
+accesses from the CPU's point of view; linear probing's contiguous
+walk feeds the cache. At load factors below 0.8, linear probing's
+cache advantage often beats double hashing's shorter probe
+count in wall-clock time. Above 0.8, double hashing wins. The
+lesson: big-O is not the whole cost story.
+\end{ideabox}
+
+\begin{notebox}[Two hash functions from one]
+A common trick when you only have one hash function: split its
+output. For a 64-bit hash $H(k)$, use the low 32 bits as $h_1$
+and the high 32 bits as $h_2$. This gives you two
+statistically-independent-enough hash values from one computation.
+Java's \texttt{HashMap} uses a variant of this idea.
+\end{notebox}
+
+\begin{ideabox}[The pattern across 5.2--5.5]
+Four collision strategies, one theme: \emph{spread the keys out
+so probe paths are short}. Chaining spreads into separate lists.
+Linear probing walks, and clusters. Quadratic widens the walk.
+Double hashing randomizes the walk. Each fixes a specific flaw
+of the previous. Real-world hashing takes the best pieces of
+each: open-addressed layout (for cache), randomized probing (for
+spread), low load factors (for speed), and periodic rehashing
+(for cleanup). The remaining sections tie these together.
+\end{ideabox}
+
+\section{5.6 Hash Table Resizing}
+
+Every cost analysis so far has assumed the load factor stays
+bounded. But the user keeps inserting, and $n$ keeps growing.
+Without intervention, $\alpha = n/m$ climbs past 0.5, 0.75, 0.9,
+and eventually the table fills up. \emph{Resizing} is how hash
+tables bound their load factor at runtime.
+
+\begin{defnbox}[Resize (rehash)]
+The operation of allocating a larger array, reinserting every
+existing item into it using a fresh hash-to-bucket mapping, and
+discarding the old array. Triggered when the load factor crosses
+a threshold. Cost: $O(n)$ --- every item must be rehashed.
+\end{defnbox}
+
+\subsection*{The algorithm}
+
+\begin{enumerate}[leftmargin=*]
+    \item Decide a new size $m'$. Commonly $m' \approx 2m$, rounded
+          up to the next prime.
+    \item Allocate a fresh array of size $m'$, all slots empty.
+    \item For each non-empty bucket in the old table, re-compute
+          $h(key) \bmod m'$ (note: \emph{not} $\bmod m$) and
+          insert into the new table.
+    \item Free the old array. Swap the pointer.
+\end{enumerate}
+
+\begin{examplebox}[Resize]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void resize(size_t newCap) {
+    std::vector<Slot> oldTable = std::move(table);
+    table.assign(newCap, Slot{});   // all EMPTY_SINCE_START
+    n_ = 0;
+    for (const Slot& s : oldTable) {
+        if (s.state == OCCUPIED) insert(s.key);
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+The old bucket indices are \emph{meaningless} for the new table.
+Every item must be re-hashed from scratch. This is why the
+operation is $O(n)$ rather than ``just copy the array.''
+
+\subsection*{When to resize}
+
+Three common triggers:
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Trigger} & \textbf{When} & \textbf{Typical threshold} \\
+\hline
+Load factor & $\alpha \geq t$             & 0.5--0.75 (open addr); 1.0+ (chaining) \\
+Chain length (chaining) & longest chain $\geq k$ & 4--8 \\
+Probe count (open addr) & probes $\geq k$   & $N/3$ or similar \\
+\hline
+\end{tabular}
+\end{center}
+
+Load factor is the standard trigger because it's cheap to check
+(just compare \texttt{n\_ / m} to the threshold after each
+insert). The other triggers are more responsive to pathological
+cases --- a few really-bad buckets can justify resizing even if
+$\alpha$ looks okay.
+
+\subsection*{Growth factor: why doubling?}
+
+Suppose you grow by adding a fixed amount ($m' = m + c$) each
+time. Inserting $n$ items triggers $n/c$ resizes, each $O(n)$ on
+average, so total work is $O(n^2 / c) = O(n^2)$. \textbf{Back to
+amortized $O(n)$ per insert on average} --- a disaster.
+
+With $m' = 2m$ (doubling), you resize $O(\log n)$ times over the
+life of the table. Each resize $i$ rehashes roughly $2^i$ items.
+Total rehash work: $1 + 2 + 4 + \ldots + n \approx 2n = O(n)$.
+Amortized $O(1)$ per insert.
+
+\begin{ideabox}[Same amortization as \texttt{std::vector}]
+This is the same geometric-growth argument that makes
+\texttt{std::vector::push\_back} amortized $O(1)$. The rule
+generalizes: any data structure that occasionally needs to
+rebuild itself should grow by a constant \emph{factor}, not a
+constant \emph{amount}. Array lists, hash tables, deques, even
+JIT code caches --- all grow geometrically for this reason.
+\end{ideabox}
+
+\subsection*{Why prime sizes?}
+
+If table size $m$ has small factors, keys that share those
+factors will cluster. Example: $m = 10$ and keys are even. Every
+even key hashes to an even bucket; half the table is wasted.
+
+Prime sizes avoid this: $\gcd(\text{key}, m) = 1$ for most keys,
+so the modulo spreads them uniformly regardless of key
+structure. Doubling to the \emph{next prime} ($m = 11 \to 23 \to
+47 \to 97$) is a common implementation choice.
+
+\begin{warnbox}[Resize cost is not invisible]
+A single insertion that triggers a resize is $O(n)$ --- the
+amortized analysis doesn't help the caller who just hit the
+spike. For real-time code (games, audio, trading systems), this
+is a problem: one unlucky insert blows the frame budget. Fixes
+include: pre-size the table with \texttt{reserve()}, use
+incremental rehashing (move a few items per operation over time
+instead of all at once --- Redis does this), or accept higher
+memory and use a never-resize table.
+\end{warnbox}
+
+\subsection*{Shrink?}
+
+Most implementations \emph{never} shrink automatically. Why:
+
+\begin{itemize}[leftmargin=*]
+    \item Shrinking and regrowing in a tight loop of inserts and
+          removes would thrash.
+    \item The memory ``wasted'' by a half-empty table is usually
+          cheap compared to the cost of a resize.
+    \item If the user really wants to reclaim memory, they can
+          call \texttt{rehash(n)} or move into a fresh table
+          explicitly.
+\end{itemize}
+
+\texttt{std::unordered\_map} has \texttt{rehash(n)} and
+\texttt{reserve(n)} but no auto-shrink. \texttt{std::vector} has
+\texttt{shrink\_to\_fit()} but it's still a manual request.
+
+\begin{notebox}[Load factor thresholds in the wild]
+\texttt{std::unordered\_map} default max: 1.0. Java
+\texttt{HashMap}: 0.75. Python \texttt{dict}: 2/3 (0.67). Google
+Abseil Swiss tables: $7/8$ (0.875). Rust \texttt{HashMap}: 7/8.
+Chaining tables can tolerate $\alpha > 1$ because longer chains
+only hurt linearly; open-addressed tables can't, so they resize
+earlier. The precise threshold is an engineering knob with
+tradeoffs on both sides (too low: wasted memory; too high: slow
+probes).
+\end{notebox}
+
+\begin{ideabox}[Resizing is what makes ``$O(1)$ average'' work]
+Without resizing, a hash table's performance degrades linearly as
+you insert more items. The $O(1)$ guarantee only holds because
+the implementation keeps $\alpha$ bounded by rebuilding.
+Resizing is the \emph{mechanism} that preserves the asymptotic
+guarantee --- without it, the analysis breaks down. When you
+profile a hash table and see occasional slow operations, it's
+almost always a resize in progress.
+\end{ideabox}
+
+\section{5.7 Common Hash Functions}
+
+Every hash table so far has assumed a hash function that ``maps
+keys to buckets uniformly.'' This section finally makes that
+concrete: what does a good hash function \emph{look like}, and
+what can go wrong?
+
+\begin{defnbox}[Good hash function]
+A function $h: \text{Keys} \to [0, m)$ that (1) is cheap to
+compute, (2) distributes keys uniformly across buckets, and (3)
+uses \emph{all} the bits of the key so that small differences
+between keys produce different hashes. A \emph{perfect} hash
+function maps each expected key to a unique bucket with no
+collisions --- achievable only when the full key set is known
+up front.
+\end{defnbox}
+
+\subsection*{Modulo: the simplest, surprisingly subtle}
+
+$h(k) = k \bmod m$ is the textbook default.
+
+\begin{examplebox}[Modulo hash]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+size_t hashModulo(int key, size_t m) {
+    return key % m;
+}
+\end{lstlisting}
+\end{examplebox}
+
+When does it fail? When the keys share a factor with $m$. If
+keys are always even and $m$ is even, odd buckets are never
+used. If $m = 10$ and keys are \texttt{10, 20, 30, 40}, every
+one hashes to bucket 0. This is exactly why prime table sizes
+are recommended: $\gcd(\text{key}, m)$ is almost always 1, so
+the modulo spreads the keys out regardless of structure.
+
+\begin{warnbox}[Powers of 2 and modulo]
+$k \bmod 2^n$ reduces to $k$ \texttt{\& ((1 << n) - 1)} --- just
+the low $n$ bits. That's fast, but it throws away all the
+high-order information. If your keys are clustered in their low
+bits (pointers on 64-bit systems often are), collisions explode.
+Either use prime $m$ (accept slower modulo) or mix the bits
+first (multiply-and-shift, XOR fold).
+\end{warnbox}
+
+\subsection*{Mid-square}
+
+Square the key, extract the middle bits. The idea: squaring mixes
+every bit of the key into the middle of the result, so the middle
+bits depend on the entire key.
+
+\begin{examplebox}[Mid-square hash (binary)]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+size_t hashMidSquare(uint32_t key, size_t m) {
+    uint64_t sq   = uint64_t(key) * key;
+    size_t   r    = 10;                   // bits to extract
+    size_t   drop = (64 - r) / 2;
+    uint64_t mid  = (sq >> drop) & ((1ULL << r) - 1);
+    return mid % m;
+}
+\end{lstlisting}
+\end{examplebox}
+
+Mid-square is a historical curiosity now --- multiplicative
+hashing (below) dominates for integer keys --- but it's a useful
+illustration of the general technique: \emph{mix the bits, then
+take a slice.}
+
+\subsection*{Multiplicative hashing for strings}
+
+For string keys, you can't just take a single character and
+modulo. You need a function that combines every character into a
+single hash.
+
+\begin{examplebox}[djb2, Bernstein's classic]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+size_t hashString(const std::string& s) {
+    size_t h = 5381;
+    for (char c : s) h = h * 33 + static_cast<unsigned char>(c);
+    return h;
+}
+\end{lstlisting}
+\end{examplebox}
+
+The idea: iteratively fold each character into a running hash by
+multiplying and adding. The multiplier (33) and seed (5381) are
+chosen so that small changes in the input produce large changes
+in the hash --- an informal \emph{avalanche} property.
+
+Variants:
+\begin{itemize}[leftmargin=*]
+    \item djb2 XOR: \texttt{h = h * 33 \textasciicircum{} c} --- marginally better distribution
+    \item sdbm: \texttt{h = c + (h << 6) + (h << 16) - h} --- good for text
+    \item FNV-1a: iterative XOR-then-multiply --- widely used
+    \item CityHash, FarmHash, xxHash: modern, SIMD-accelerated, extremely fast
+\end{itemize}
+
+\subsection*{What makes a hash function ``good''?}
+
+\begin{center}
+\begin{tabular}{|l|p{10cm}|}
+\hline
+\textbf{Property} & \textbf{Meaning} \\
+\hline
+Determinism & Same input $\Rightarrow$ same output, always \\
+Uniform distribution & Each bucket receives roughly $n/m$ keys \\
+Avalanche & Flipping one input bit flips about half the output bits \\
+Cheap     & A single arithmetic operation plus modulo, ideally \\
+Non-trivial & Doesn't fall into obvious traps (e.g., identity function) \\
+\hline
+\end{tabular}
+\end{center}
+
+``Cryptographic strength'' is usually \emph{not} required. SHA-256
+is a good hash function for ensuring data integrity, but
+terrible for hash tables (thousands of cycles per call). Hash
+table hash functions need speed over security.
+
+\begin{warnbox}[Don't invent your own]
+Writing a good hash function is harder than it looks. Subtle
+distribution biases only show up under specific workloads and
+can be hard to detect. For production code, use
+\texttt{std::hash<T>} (C++), Google's CityHash, or xxHash ---
+all battle-tested. Hand-rolling ``just use modulo'' is fine for
+homework; do not ship it in real software handling adversarial
+input.
+\end{warnbox}
+
+\subsection*{C++: \texttt{std::hash}}
+
+C++ provides \texttt{std::hash<T>} for the standard types: ints,
+pointers, strings, and enums. You can specialize it for your own
+types by defining \texttt{std::hash<YourType>} in the
+\texttt{std} namespace, or supply a custom hasher as a template
+parameter to the unordered container.
+
+\begin{examplebox}[Custom hasher]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+struct Point { int x, y; };
+
+struct PointHash {
+    size_t operator()(const Point& p) const noexcept {
+        // combine two hashes --- the standard "boost::hash_combine" pattern
+        size_t h1 = std::hash<int>{}(p.x);
+        size_t h2 = std::hash<int>{}(p.y);
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+    }
+};
+
+std::unordered_set<Point, PointHash> points;
+\end{lstlisting}
+\end{examplebox}
+
+The magic number \texttt{0x9e3779b9} is $\frac{2^{32}}{\phi}$
+($\phi$ = golden ratio) --- a widely-used bit-mixing constant
+that gives good distribution across field combinations. Boost's
+\texttt{hash\_combine} uses this; many custom hashers copy the
+idiom.
+
+\begin{notebox}[Hash randomization: security vs. reproducibility]
+Some languages randomize their hash seeds at startup to defend
+against hash-collision DoS attacks (Python 3.3+, Ruby, Rust). A
+side effect: iteration order of a hash map is now
+\emph{nondeterministic} between program runs. Code that depends
+on consistent iteration order breaks subtly. C++'s standard
+doesn't mandate randomization, though some implementations offer
+it as a build option.
+\end{notebox}
+
+\begin{ideabox}[The big picture]
+A hash table's speed is only as good as its hash function. Any
+of the collision-resolution schemes (chaining, linear, quadratic,
+double) will perform terribly if the hash function is poor ---
+because they all assume approximately-uniform distribution. When
+your hash table is slow, suspect the hash function first, the
+load factor second, and the collision strategy last.
+\end{ideabox}
+
+\subsection*{Universal hashing: the principled defense against adversarial input}
+
+The hash randomization notebox above is a practical sketch; the
+underlying theory is \emph{universal hashing}, due to Carter and
+Wegman (1979). It is the standard answer to ``what if my hash
+function's worst-case input shows up?'' --- a question every fixed
+hash function leaves dangling.
+
+\begin{defnbox}[Universal hash family]
+A finite collection $\mathcal{H}$ of hash functions
+$h: U \to \{0, 1, \ldots, m-1\}$ is \textbf{universal} if for every
+pair of distinct keys $k, l \in U$,
+\[
+\Pr_{h \in \mathcal{H}}\bigl[h(k) = h(l)\bigr] \;\leq\; \frac{1}{m}.
+\]
+The probability is over the random choice of $h$, \emph{not} over
+the keys.
+\end{defnbox}
+
+The motivation is the gap between average-case and worst-case for
+\emph{any single} hash function. Pick any fixed $h$ and an
+adversary can find $n$ keys that all hash to the same bucket,
+giving $\Theta(n)$ chains. Universal hashing escapes this by
+randomizing the function itself at the start of execution: the
+adversary picks the keys, but the program picks the hash function
+\emph{independently and after} the keys are chosen, so worst-case
+inputs no longer exist for any particular run.
+
+\begin{examplebox}[The $h_{a,b}$ family from CLRS Ch 11.3.3]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+// Universal hash family h_{a,b}(k) = ((a*k + b) mod p) mod m
+// where p > u (universe size) is a fixed prime, and a, b are
+// chosen at random at startup with a in [1, p-1], b in [0, p-1].
+
+struct UniversalHash {
+    uint64_t a, b;
+    uint64_t p;            // prime > universe size
+    size_t   m;            // table size
+
+    UniversalHash(size_t table_size, uint64_t prime) : p(prime), m(table_size) {
+        std::mt19937_64 rng(std::random_device{}());
+        a = 1 + rng() % (p - 1);   // a in [1, p-1], nonzero
+        b =     rng() %  p;        // b in [0, p-1]
+    }
+
+    size_t operator()(uint64_t k) const {
+        return ((a * k + b) % p) % m;
+    }
+};
+\end{lstlisting}
+\end{examplebox}
+
+\begin{notebox}[Why universal hashing implies short chains]
+The expected chain length at $h(k)$ is now bounded by
+$1 + \alpha$ \emph{regardless of the keys}. Sketch (CLRS Theorem
+11.3, OCW lec4): for each pair $k, l$ of distinct keys, define
+indicator $X_{kl} = \mathbf{1}[h(k) = h(l)]$. By the universality
+condition, $E[X_{kl}] = \Pr[h(k)=h(l)] \leq 1/m$. The number of
+keys colliding with $k$ is $Y_k = \sum_{l \neq k} X_{kl}$, so by
+linearity of expectation,
+\[
+E[Y_k] \;=\; \sum_{l \neq k} E[X_{kl}] \;\leq\; \sum_{l \neq k} \tfrac{1}{m}
+       \;\leq\; \tfrac{n-1}{m} \;\leq\; \alpha.
+\]
+The expected length of the bucket containing $k$ is $E[Y_k] + 1
+\leq 1 + \alpha$. \emph{The same bound as simple uniform hashing,
+but now it follows from the algorithm's randomness, not from an
+assumption about the input.}
+\end{notebox}
+
+\begin{ideabox}[How real systems use this]
+Few production hash tables ship a full universal-family
+implementation; the constant factors don't justify it for typical
+workloads. What real systems \emph{do} ship is the same idea in a
+weaker form: a process-startup random seed combined with a
+fast non-cryptographic hash. Python's \texttt{hash} (since 3.3),
+Rust's \texttt{RandomState}, Java's salted \texttt{String.hashCode}
+on recent JVMs --- all of them randomize at process start so an
+attacker cannot precompute colliding inputs. The formal
+universal-family construction is the textbook answer; salted-hash
+randomization is the production answer. The defense is the same
+in spirit: don't let the adversary pick the function.
+\end{ideabox}
+
+\section{5.8 Direct Hashing}
+
+\emph{Direct hashing} is the degenerate case: use the key itself
+as the bucket index. No modulo, no mixing, no collisions.
+Whenever it's feasible, it's the fastest possible hash table.
+Unfortunately, it's rarely feasible.
+
+\begin{defnbox}[Direct access table]
+A hash table in which the hash function is the identity:
+$h(k) = k$. The bucket for key $k$ is always $\text{table}[k]$.
+No collisions can occur because every key has its own bucket.
+\end{defnbox}
+
+\subsection*{When it works}
+
+Direct hashing requires \emph{every} potential key to have a
+reserved slot. If your keys are integers in $[0, K)$, you need a
+table of size $K$.
+
+\begin{examplebox}[Direct-access table]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+// Suitable only when keys are small non-negative integers.
+constexpr size_t K = 10000;
+std::optional<Item> table[K];
+
+void insert(const Item& it)   { table[it.key] = it; }
+void remove(int key)          { table[key].reset(); }
+Item* find(int key) {
+    return table[key] ? &*table[key] : nullptr;
+}
+\end{lstlisting}
+\end{examplebox}
+
+Three lines per operation, all $O(1)$ \emph{worst case} --- not
+average. No hash function to compute, no collision handling, no
+resizing.
+
+\subsection*{The two killer limitations}
+
+\begin{center}
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Limit} & \textbf{Consequence} \\
+\hline
+Keys must be small non-negative integers & Can't directly handle strings, negative numbers, or large key spaces \\
+Table size = max key + 1                 & A key space of $2^{32}$ needs a 4-billion-slot array (16 GB if each slot is 4 bytes, more if you store anything bigger) \\
+\hline
+\end{tabular}
+\end{center}
+
+If the key space is dense --- say, student IDs 0--9999 and you
+have 8000 active students --- direct hashing is perfect: a
+10,000-slot array, 80\% utilized, all operations $O(1)$ with zero
+overhead.
+
+If the key space is sparse --- say, US social security numbers
+(9 digits, $10^9$ possible values) but your table has a few
+thousand people --- direct hashing wastes 99.9999\% of the array.
+You need a regular hash table.
+
+\begin{ideabox}[Direct hashing is the ceiling]
+Direct hashing represents the best a hash table can do: one
+memory access per operation, zero collision work. Every
+``real'' hash table is an approximation of this under memory
+pressure. When you profile a hash-heavy workload and it's still
+slow, the question to ask is ``how close am I to direct hashing
+behavior?'' --- the answer tells you whether the slowness is
+unavoidable or an artifact of your chosen scheme.
+\end{ideabox}
+
+\subsection*{Where direct hashing actually shows up}
+
+Don't dismiss it as purely theoretical. Small-keyspace direct
+access tables are genuinely common:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{ASCII character lookup tables} (256 slots) ---
+          tokenizer tables, character-class tests
+          (\texttt{isalnum}, \texttt{isspace})
+    \item \textbf{Byte-to-hex} conversion (256 slots holding
+          two-character strings)
+    \item \textbf{Color palettes} in graphics (indexed color:
+          the ``hash'' is just the palette index)
+    \item \textbf{File descriptor tables} in OS kernels (fd is
+          already an array index)
+    \item \textbf{CPU register mapping} in compilers
+          (register number $\to$ allocation info)
+    \item \textbf{Symbol tables in assemblers} when symbol IDs
+          are sequential
+\end{itemize}
+
+Every one of these uses direct indexing by design because the
+key space is small and dense.
+
+\begin{warnbox}[Negative keys need translation]
+If your keys include negative integers, you can still use direct
+hashing --- just add an offset. Keys in $[-100, 100]$ map to
+indices $[0, 200]$ via \texttt{index = key + 100}. This extends
+direct hashing to any \emph{bounded} integer range.
+\end{warnbox}
+
+\subsection*{Comparison}
+
+\begin{center}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Strategy} & \textbf{Worst case} & \textbf{Collisions?} & \textbf{Space} \\
+\hline
+Direct hashing    & $O(1)$ & None       & $O(K)$ (key range) \\
+Chaining          & $O(n)$ & Handled    & $O(n + m)$ \\
+Open addressing   & $O(n)$ & Handled    & $O(m)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+Direct hashing trades space for time: you pay for a slot for
+every possible key, but you get the best possible access time.
+Regular hash tables reverse the deal: save memory, accept
+occasional collision handling.
+
+\begin{notebox}[Perfect hashing: the middle ground]
+For static key sets (known up front, never changes), you can
+construct a \emph{perfect hash function} --- one that maps each
+key to a unique bucket in a tightly-sized table. No wasted space,
+no collisions. Classic use: compiler keyword tables (the set
+\{\texttt{if}, \texttt{else}, \texttt{while}, \texttt{for},
+\ldots\} is fixed; you can hand-tune a hash function that maps
+each to a distinct small integer). Tools like \texttt{gperf}
+generate perfect hash functions from a word list. It's direct
+hashing for the modern world --- limited to static data but
+optimal when applicable.
+\end{notebox}
+
+\begin{ideabox}[Why this section exists]
+Direct hashing is deliberately a \emph{counterexample} --- it
+shows what you'd do if memory were free. Every technique in
+sections 5.1--5.7 exists because direct hashing's memory cost is
+prohibitive. The moment you squint at a hash table problem and
+realize ``oh, my keys are small integers,'' you should stop and
+consider an array.
+\end{ideabox}
+
+\section{5.9 Hashing for Cryptography}
+
+Hashing has a second life outside data structures: as a
+\emph{cryptographic primitive}. Cryptographic hash functions
+share the ``deterministic function from input to fixed-size
+output'' shape with hash-table functions, but their design
+goals --- and their cost --- are radically different.
+
+\begin{defnbox}[Cryptographic hash function]
+A hash function with three additional properties:
+(1) \emph{pre-image resistance}: given a hash value $h$, it is
+computationally infeasible to find any input $x$ such that
+$\text{hash}(x) = h$;
+(2) \emph{second pre-image resistance}: given an input $x_1$, it
+is infeasible to find a different $x_2$ with the same hash;
+(3) \emph{collision resistance}: it is infeasible to find any
+two inputs with the same hash.
+\end{defnbox}
+
+\subsection*{What ``infeasible'' means}
+
+A good cryptographic hash with an $n$-bit output requires
+approximately $2^n$ work to find a pre-image and $2^{n/2}$ work
+to find a collision (the birthday bound). For $n = 256$, that is
+$\approx 10^{77}$ operations --- more than the age of the
+universe on all the computers ever built.
+
+Compare this to a hash-table hash function like djb2. djb2 is
+fast (a few nanoseconds per byte) but trivially easy to reverse
+or collide on demand. It's not secure; it was never designed to
+be.
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Goal} & \textbf{Hash-table hash} & \textbf{Cryptographic hash} \\
+\hline
+Speed          & $\leq$ 1 ns/byte    & 1--10 ns/byte (SHA-256) \\
+Output size    & 32--64 bits         & 128--512 bits \\
+Reversibility  & Often easy           & Infeasible \\
+Collisions     & Acceptable (handled) & Infeasible to produce \\
+Use cases      & Lookups              & Integrity, signatures, passwords \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection*{Data integrity}
+
+Download a file plus its hash. Recompute the hash locally. If
+they match, the file wasn't corrupted or tampered with.
+
+\begin{examplebox}[Verifying a download with SHA-256]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single]
+$ sha256sum ubuntu-24.04.iso
+c37f6b0e...  ubuntu-24.04.iso
+
+# Compare against the published hash on ubuntu.com.
+# Match   -> bits are correct
+# Mismatch -> file is corrupt or modified
+\end{lstlisting}
+\end{examplebox}
+
+Historical timeline of algorithms:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{MD5} (1991): 128-bit output. Collision attacks
+          demonstrated in 2004; \textbf{broken}, do not use for
+          security.
+    \item \textbf{SHA-1} (1995): 160-bit output. Collision
+          demonstrated in 2017 (SHAttered); \textbf{deprecated}.
+    \item \textbf{SHA-256 / SHA-3}: current standards.
+          256--512 bit outputs, no known attacks faster than
+          brute force.
+\end{itemize}
+
+\begin{warnbox}[Never use MD5 or SHA-1 for security]
+Both have been publicly broken. They remain fine for
+\emph{non-security} use (checksums, content-addressable storage
+keys) where an attacker isn't trying to cause collisions. But
+for anything where deception is a threat model --- signatures,
+certificates, password hashing --- use SHA-256 or better.
+\end{warnbox}
+
+\subsection*{Password hashing}
+
+When a user signs up, don't store their password. Store
+\texttt{hash(password)}. At login, hash the submitted password
+and compare. If the database is stolen, attackers have hashes,
+not passwords --- and with a good hash, inverting them is
+infeasible.
+
+\begin{examplebox}[Naive password hashing (don't do this)]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single]
+stored = sha256(password)   // bad
+\end{lstlisting}
+\end{examplebox}
+
+Two attacks on naive password hashing:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Rainbow tables}: attackers precompute hashes
+          for billions of common passwords. If your hash is in
+          the table, password recovered instantly.
+    \item \textbf{Bulk cracking}: modern GPUs compute billions of
+          SHA-256 hashes per second. For short or weak passwords,
+          brute force is tractable.
+\end{enumerate}
+
+The two standard defenses:
+
+\begin{center}
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Defense} & \textbf{What it does} \\
+\hline
+\textbf{Salt} & Append a random per-user value before hashing. Forces the attacker to recompute the rainbow table for every user --- no more precomputation. \\
+\textbf{Slow hash} & Use a deliberately expensive function (bcrypt, scrypt, Argon2) that takes 100ms--1s per hash. Kills bulk cracking: a million-password attack now takes 12 CPU-days instead of a second. \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{examplebox}[Correct password hashing]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single]
+salt   = random_bytes(16)                  // unique per user
+stored = bcrypt(password + salt, cost=12)  // slow
+// store (salt, stored) in the database
+\end{lstlisting}
+\end{examplebox}
+
+\texttt{bcrypt}, \texttt{scrypt}, and \texttt{Argon2} are the
+current standards. Argon2 won the Password Hashing Competition
+in 2015 and is the recommended default for new systems.
+
+\begin{ideabox}[The design tension: fast vs. slow]
+Cryptographic hashes usually want to be \emph{fast} (you hash a
+lot of data for integrity). Password hashes want to be
+\emph{slow} (you hash once per login, and slow is the point).
+This is why ``use SHA-256 for passwords'' is wrong --- SHA-256
+was engineered for speed, the opposite of what password hashing
+needs. Always use a dedicated password hash for passwords.
+\end{ideabox}
+
+\subsection*{Where else does cryptographic hashing show up?}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Digital signatures}: sign the hash of the
+          document, not the document itself. Cheaper, and works
+          for any size.
+    \item \textbf{Blockchain / content addressing}: each block
+          references the hash of the previous block. Git does
+          the same with commits.
+    \item \textbf{Merkle trees}: hash-based structures that let
+          you verify membership in a large set without
+          downloading the whole set.
+    \item \textbf{HMAC}: keyed hash functions used to authenticate
+          messages.
+    \item \textbf{Commitment schemes}: hash now, reveal later ---
+          used in auctions, coin-flipping protocols, etc.
+\end{itemize}
+
+\begin{notebox}[Cryptographic hashes and hash tables in one program]
+A modern web server might use both. SHA-256 to verify TLS
+certificates and check uploaded file integrity; a fast non-
+cryptographic hash (like xxHash or std::hash) to back
+\texttt{unordered\_map}s in the session cache. The two systems
+have different threat models and different cost profiles; it's
+normal for one program to use both.
+\end{notebox}
+
+\begin{ideabox}[Chapter 5 in retrospect]
+You started with a simple idea: \emph{compute the address instead
+of searching for it}. Then spent eight sections on the
+engineering reality: hash functions that spread keys out,
+collision resolution strategies, resizing to bound load, when
+direct hashing applies. This final section pivots to a completely
+different use of the same mathematical tool. Cryptographic
+hashing \emph{looks} like data-structure hashing but has almost
+nothing else in common --- the only shared idea is ``deterministic
+function, fixed-size output.'' The design space between a
+4-nanosecond hash-table hash and a 100-millisecond Argon2 password
+hash is enormous, and the choice depends entirely on what you're
+defending against.
+\end{ideabox}
+
+\section*{What this connects to}
+
+\begin{notebox}[Forward links to later chapters]
+\begin{itemize}
+    \item \textbf{Chapter 6 (BSTs).} BSTs give you a sorted alternative
+    to hash tables. Choose BST (ordered set, range queries) vs.\ hash
+    (fastest point lookup) -- the tradeoff is on the exam.
+    \item \textbf{Graph algorithms} (opt.\ ch.~10). ``Visited'' sets in
+    BFS / DFS are hash sets; Dijkstra's ``distance'' lookup is a hash
+    map; hashing keeps graph traversal at expected $O(V + E)$.
+    \item \textbf{Dynamic programming memoization.} Top-down DP stores
+    already-computed subproblems in a hash map. The efficiency of DP
+    in the average case is a hash-table claim.
+    \item \textbf{C++ production idiom.}
+    \texttt{std::unordered\_map<K, V>} is chaining; \texttt{std::map<K,
+    V>} is a red-black tree (ch.~6 territory). Knowing which to pick
+    is a real decision on every CS 300 assignment from here on.
+    \item \textbf{Linked lists} from ch.~4 are what chaining buckets
+    \emph{are}. The node + pointer drills from ch.~4 pay off the moment
+    you trace a chaining collision.
+\end{itemize}
+\end{notebox}
+
+\textbf{Companion materials.} Compact notes:
+\texttt{chapters/ch\_5/notes.tex}. Practice prompts (problem $\to$
+pseudocode $\to$ C++): \texttt{chapters/ch\_5/practice.md}.
+
+\end{document}

@@ -1,0 +1,3367 @@
+\documentclass[11pt]{article}
+\input{../../notes-style.tex}
+
+\title{CS 300 -- Chapter 4 Lectures\\\large Lists, Stacks, Queues, and Deques}
+\author{Jose de Lima}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{ideabox}[Chapter map]
+\textbf{Where this sits in CS 300.} Chapter 3 named the seven data
+structures; chapter 4 picks one family -- \emph{linear, ordered
+collections} -- and builds it end-to-end, twice (pointer-based and
+array-based). Everything you learn here about \emph{cost is a function
+of memory layout} transfers verbatim to trees (ch.~6), heaps, and graph
+adjacency lists (opt.\ ch.~10).
+
+\textbf{What you add to your toolkit here:}
+\begin{itemize}
+    \item \textbf{Pointer-based lists.} Singly linked (SLL) and doubly
+          linked (DLL); append, prepend, insert-after, remove, search,
+          traverse. You can write these from scratch, by hand.
+    \item \textbf{Sentinel / dummy-node idiom.} The trick that collapses
+          ``first / middle / last'' special cases into one uniform case.
+    \item \textbf{Three restricted list ADTs}: Stack (LIFO), Queue
+          (FIFO), Deque (both ends) -- each built on linked lists or
+          arrays.
+    \item \textbf{Array-based lists.} The \texttt{std::vector} cost
+          model (amortized $O(1)$ back, $O(n)$ insert/erase elsewhere)
+          contrasted cleanly with the linked-list cost model.
+    \item \textbf{A decision framework} (see 4.18+) for picking between
+          array-based, SLL, DLL, and sentinel-DLL. This is the question
+          that actually shows up on assignments.
+\end{itemize}
+
+\textbf{Mastery checklist} -- you should be able to, without references:
+\begin{enumerate}
+    \item Draw an SLL of 3 nodes and execute \texttt{insertAfter} and
+          \texttt{remove} on it by redrawing the pointers one step at a
+          time.
+    \item Write the node \texttt{struct} for an SLL and a DLL; write
+          \texttt{append}, \texttt{prepend}, \texttt{insertAfter},
+          \texttt{remove}, and \texttt{search} for both.
+    \item Explain why \texttt{remove} on an SLL requires the
+          \emph{predecessor}'s pointer, and how DLL gets around it.
+    \item State the cost of every List-ADT operation on (a) SLL,
+          (b) DLL, (c) array-based list -- without guessing. Know
+          \emph{why} each one is what it is.
+    \item Implement Stack, Queue, and Deque on both a linked list and
+          an array, and argue which backing data structure you'd pick
+          for each.
+    \item Rewrite an SLL method that has a 3-case switch (empty / head /
+          middle) to use a sentinel node and collapse to one case.
+    \item Traverse a linked list iteratively \emph{and} recursively;
+          know when recursion blows the stack.
+    \item Given a workload description (``mostly appends, rare middle
+          removals, needs $O(1)$ random access''), pick the right list
+          variant and justify.
+\end{enumerate}
+
+\textbf{Looking ahead.} Chapter 5 moves from linear to keyed storage
+(hash tables), but the pointer-chasing mental model you're building here
+is exactly what hash-table chaining uses internally. Chapter 6 (trees)
+extends the node + pointer idiom from one ``next'' pointer to two
+(``left'' / ``right''); the whole tree chapter will feel like a
+generalization of this one.
+\end{ideabox}
+
+\section{4.1 The List ADT}
+
+Chapter 3 surveyed the seven fundamental data structures and the
+nine common abstract data types, then spent most of its energy on
+searching and sorting. Chapter 4 starts the depth-first tour: each
+ADT gets its own chapter where we define the contract, implement it,
+and analyze the operations. First up: the \textbf{list}.
+
+The list is the workhorse ADT. Nearly every other sequence-based
+structure (stack, queue, deque) is a list with additional
+constraints. Understanding what a list's contract actually
+\emph{is} -- and what it deliberately leaves unspecified -- is the
+first step to picking the right structure later.
+
+\begin{defnbox}[List]
+A \textbf{list} is an abstract data type for a \emph{finite, ordered
+sequence} of items. Items have \emph{positions} (first, second, last),
+duplicates are allowed, and operations are defined in terms of those
+positions: append at the end, prepend at the front, insert after a
+given item, remove, search, iterate.
+\end{defnbox}
+
+\begin{ideabox}[Three things the list ADT guarantees]
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Order matters.} \texttt{(7, 9, 5)} is different from
+        \texttt{(5, 7, 9)}. A list is not a set.
+  \item \textbf{Duplicates are allowed.} \texttt{(3, 3, 3)} is a
+        valid three-item list.
+  \item \textbf{Positions are stable.} ``The second item'' refers to
+        a specific slot, not just ``any item.'' Inserting at the
+        front shifts every other item's position index by one;
+        the ADT is aware of this.
+\end{enumerate}
+\end{ideabox}
+
+\subsection{The contract: operations}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{3.4cm}p{5cm}p{4.8cm}@{}}
+\hline
+\textbf{Operation} & \textbf{What it does} & \textbf{Example (start: 99, 77)} \\
+\hline
+\texttt{Append(L, x)}          & Insert $x$ at the end              & \texttt{Append(L, 44)} $\Rightarrow$ 99, 77, 44 \\
+\texttt{Prepend(L, x)}         & Insert $x$ at the front            & \texttt{Prepend(L, 44)} $\Rightarrow$ 44, 99, 77 \\
+\texttt{InsertAfter(L, w, x)}  & Insert $x$ immediately after $w$   & \texttt{InsertAfter(L, 99, 44)} $\Rightarrow$ 99, 44, 77 \\
+\texttt{Remove(L, x)}          & Remove first occurrence of $x$     & \texttt{Remove(L, 77)} $\Rightarrow$ 99 \\
+\texttt{Search(L, x)}          & Return item (or \texttt{null})     & \texttt{Search(L, 99)} $\Rightarrow$ 99; \texttt{Search(L, 22)} $\Rightarrow$ null \\
+\texttt{Print(L)}              & Print items in order               & ``99, 77'' \\
+\texttt{PrintReverse(L)}       & Print items in reverse order       & ``77, 99'' \\
+\texttt{Sort(L)}               & Sort items ascending               & 77, 99 \\
+\texttt{IsEmpty(L)}            & True iff list has no items         & \texttt{false} for (99, 77) \\
+\texttt{GetLength(L)}          & Number of items                    & 2 \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{notebox}[Not every list exposes every operation]
+The table above is a \emph{menu}, not a mandatory interface. Real
+list libraries pick a subset. \texttt{std::vector} exposes indexed
+access (\texttt{v[i]}) but no constant-time \texttt{Prepend};
+\texttt{std::forward\_list} exposes \texttt{Prepend} (via
+\texttt{push\_front}) but not indexed access. The ADT names the
+operations; the implementation picks which to make cheap.
+\end{notebox}
+
+\subsection{What the contract \emph{doesn't} say}
+
+\begin{ideabox}[Conspicuous silences]
+The list ADT says nothing about:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{How items are stored in memory.} Contiguously?
+        Linked nodes? Chunks? All valid.
+  \item \textbf{Cost of operations.} The ADT defines what \texttt{Append}
+        \emph{means}, not how fast it runs. An array-backed list and
+        a singly-linked list both implement \texttt{Append}; they
+        pay very different prices for it.
+  \item \textbf{Indexed random access.} The raw list ADT is defined
+        by position-relative operations (``after this item,''
+        ``first,'' ``last''), not by integer index. The \emph{dynamic
+        array} ADT is the refinement that adds $O(1)$
+        \texttt{at(i)}.
+\end{itemize}
+The silences are the point. Leaving implementation unspecified means
+callers can substitute one list implementation for another without
+rewriting application code.
+\end{ideabox}
+
+\begin{notebox}[Two interface families: Sequence and Set]
+Step back one level. Every container ADT in CS 300 belongs to one of
+two families, distinguished by where the order of items lives:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Sequence interface.} Items have an \emph{extrinsic}
+        order --- the caller chose where each item goes. Operations
+        are positional: \texttt{get\_at(i)}, \texttt{set\_at(i,x)},
+        \texttt{insert\_at(i,x)}, \texttt{insert\_first/last(x)},
+        \texttt{delete\_first/last()}. \emph{This chapter implements
+        Sequence.} List, stack, queue, and deque are all Sequence
+        with restricted operation sets.
+  \item \textbf{Set interface.} Items have an \emph{intrinsic} order
+        determined by a key. Operations are key-based:
+        \texttt{find(k)}, \texttt{insert(x)}, \texttt{delete(k)},
+        and ordered ops like \texttt{find\_min()},
+        \texttt{find\_next(k)}. ch.~5 (hash tables) and ch.~6 (BSTs)
+        implement Set.
+\end{itemize}
+The framing is from MIT 6.006. It explains why the chapter map is the
+shape it is: ch.~4 builds Sequence implementations end-to-end, then
+ch.~5--ch.~6 swap the interface and rebuild from scratch. Pick the
+right family first; pick the implementation second.
+\end{notebox}
+
+\subsection{List is the root ADT; stacks and queues restrict it}
+
+\begin{defnbox}[Restricted-access lists]
+Several ADTs later in the chapter are just lists with
+\emph{restricted} operations:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Stack}: a list where you can only insert or remove
+        at \emph{one end} (the ``top''). LIFO.
+  \item \textbf{Queue}: a list where you insert at one end and
+        remove at the other. FIFO.
+  \item \textbf{Deque}: insert or remove at \emph{either} end, but
+        nowhere else.
+\end{itemize}
+Narrower interfaces, stronger guarantees about usage patterns,
+faster implementations possible.
+\end{defnbox}
+
+\subsection{C++: \texttt{std::list}, \texttt{std::vector}, \texttt{std::forward\_list}}
+
+C++ gives you several list-like containers. All three satisfy the
+list ADT; they differ in which operations are cheap and what extra
+features they offer.
+
+\begin{examplebox}[Three takes on ``list'' in C++]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+#include <vector>
+#include <list>
+#include <forward_list>
+
+std::vector<int>        v = {7, 9, 5};   // dynamic array
+std::list<int>          l = {7, 9, 5};   // doubly linked list
+std::forward_list<int>  f = {7, 9, 5};   // singly linked list
+
+v.push_back(44);                 // O(1) amortized (append)
+l.push_back(44);                 // O(1)
+// f has no push_back!           // forward_list is single-link only
+
+v.insert(v.begin(), 44);         // O(n) (prepend: shifts everything)
+l.push_front(44);                // O(1)
+f.push_front(44);                // O(1)
+
+int len_v = v.size();            // O(1)
+int len_l = l.size();            // O(1)
+// f.size() doesn't exist; forward_list doesn't track length
+\end{lstlisting}
+\end{examplebox}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lccc@{}}
+\hline
+\textbf{Operation}            & \texttt{std::vector} & \texttt{std::list} & \texttt{std::forward\_list} \\
+\hline
+Append at end                 & $O(1)$ amortized     & $O(1)$             & no direct op \\
+Prepend at front              & $O(n)$               & $O(1)$             & $O(1)$ \\
+Insert after a known position & $O(n)$               & $O(1)$             & $O(1)$ \\
+Indexed access \texttt{v[i]}  & $O(1)$               & $O(i)$             & $O(i)$ \\
+Search by value               & $O(n)$               & $O(n)$             & $O(n)$ \\
+\texttt{size()}               & $O(1)$               & $O(1)$             & not provided \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[Pick the implementation from the \emph{access pattern}]
+``I need a list'' doesn't tell you which container to use. Ask:
+\begin{itemize}[leftmargin=*]
+  \item Will I mostly \texttt{push\_back}? \texttt{vector}.
+  \item Will I insert and remove in the middle a lot? \texttt{list}.
+  \item Do I need indexed random access? \texttt{vector}.
+  \item Do I need to splice or move sublists around? \texttt{list}.
+\end{itemize}
+For 80\% of everyday code, \texttt{std::vector} wins even when it
+looks like the ``wrong'' choice, because its cache behavior and
+constant-factor speed beat the linked-list options for moderate $n$.
+\end{warnbox}
+
+\subsection{What this chapter builds}
+
+\begin{ideabox}[The plan]
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Singly linked list.} Nodes with one \texttt{next}
+        pointer. Implements the list ADT with $O(1)$ insert at
+        known positions but no backward traversal.
+  \item \textbf{Doubly linked list.} Nodes with \texttt{next} and
+        \texttt{prev} pointers. Enables $O(1)$ removal given a
+        node pointer, and efficient reverse iteration.
+  \item \textbf{Array lists (dynamic arrays).} Contiguous storage,
+        $O(1)$ indexed access, amortized $O(1)$ \texttt{push\_back}.
+  \item \textbf{Stacks and queues.} Specializations of the above.
+\end{itemize}
+By the end of the chapter, every row in the C++ table above will be
+something you can explain, not just memorize.
+\end{ideabox}
+
+\begin{notebox}[The pattern we'll repeat from now on]
+For every ADT in this chapter and the next, we'll do:
+\begin{enumerate}[leftmargin=*]
+  \item Define the ADT (today).
+  \item Implement it with one or two structures.
+  \item Analyze each operation's cost.
+  \item Compare to the alternatives.
+\end{enumerate}
+You saw this cycle informally for the sorts in Chapter 3. From here
+on, it's the standard structure of every chapter.
+\end{notebox}
+
+\section{4.2 Singly Linked Lists: Append and Prepend}
+
+This is the first concrete implementation of the list ADT: the
+\textbf{singly linked list}. Instead of storing items in a contiguous
+block of memory (like an array), a linked list scatters them across
+individually-allocated \textbf{nodes} that ``point'' to each other.
+The payoff is cheap insertion and deletion at known positions; the
+price is slower traversal and higher per-item memory overhead.
+
+\begin{defnbox}[Singly linked list]
+A \textbf{singly linked list} is a sequence of nodes, where each
+\textbf{node} stores a data value and a \texttt{next} pointer to the
+following node. The list itself holds a \textbf{head} pointer (to
+the first node) and usually a \textbf{tail} pointer (to the last
+node). The last node's \texttt{next} is \texttt{nullptr}.
+\end{defnbox}
+
+\begin{ideabox}[Picture the list]
+\texttt{head $\to$ [7 | $\bullet$] $\to$ [9 | $\bullet$] $\to$ [5 | null] $\leftarrow$ tail}
+
+Each bracketed cell is a node. The left half is the data; the right
+half is the \texttt{next} pointer. \texttt{head} points to the first
+cell; \texttt{tail} points to the last; the last cell's \texttt{next}
+is \texttt{nullptr}.
+\end{ideabox}
+
+\subsection{The node type in C++}
+
+\begin{examplebox}[A node and a list wrapper]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+struct Node {
+    int   data;
+    Node* next;
+
+    Node(int d) : data(d), next(nullptr) {}
+};
+
+struct LinkedList {
+    Node* head = nullptr;
+    Node* tail = nullptr;
+};
+\end{lstlisting}
+\texttt{head} is how the list knows where to start; \texttt{tail} is
+the optimization that lets \texttt{append} run in $O(1)$ without
+walking the list. An empty list has both set to \texttt{nullptr}.
+\end{examplebox}
+
+\begin{warnbox}[Why \texttt{tail} is load-bearing]
+Without a \texttt{tail} pointer, appending to a linked list would
+require walking from \texttt{head} to the end -- $O(n)$ per append,
+$O(n^2)$ to build the list. \emph{Always} cache the tail when you
+care about append speed.
+\end{warnbox}
+
+\subsection{Append: add at the end}
+
+Two cases: an empty list needs its \texttt{head} and \texttt{tail}
+both pointed at the new node; a non-empty list only has to reach
+through the existing tail.
+
+\begin{examplebox}[\texttt{append}]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void append(LinkedList& list, Node* newNode) {
+    if (list.head == nullptr) {          // empty list
+        list.head = newNode;
+        list.tail = newNode;
+    } else {                              // non-empty list
+        list.tail->next = newNode;        // stitch on the end
+        list.tail       = newNode;        // advance tail
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+\begin{ideabox}[Why \texttt{append} is $O(1)$]
+The work is constant: check one pointer, write two pointers. No
+scan of the list. The pre-existing \texttt{newNode$\to$next} is
+assumed to already be \texttt{nullptr} from its constructor; if
+you're reusing a node, set it explicitly.
+\end{ideabox}
+
+\begin{warnbox}[The empty-list branch is not optional]
+If you forget the empty-list check and write
+\texttt{list.tail$\to$next = newNode} when \texttt{tail} is
+\texttt{nullptr}, you get a null-pointer dereference and a crash.
+Every linked-list operation that touches \texttt{head} or
+\texttt{tail} needs to handle the empty case explicitly. This is
+the single most common linked-list bug.
+\end{warnbox}
+
+\subsection{Prepend: add at the front}
+
+Symmetric to append, but we touch \texttt{head} instead of
+\texttt{tail}.
+
+\begin{examplebox}[\texttt{prepend}]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void prepend(LinkedList& list, Node* newNode) {
+    if (list.head == nullptr) {          // empty list
+        list.head = newNode;
+        list.tail = newNode;
+    } else {                              // non-empty list
+        newNode->next = list.head;        // point new node at old head
+        list.head     = newNode;          // new node is the new head
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+\begin{ideabox}[The order of the two assignments matters]
+In the non-empty branch, \texttt{newNode$\to$next = list.head} must
+come \emph{before} \texttt{list.head = newNode}. Swap them and you
+overwrite \texttt{head} with \texttt{newNode} first -- then the
+subsequent \texttt{newNode$\to$next = list.head} makes the node
+point at itself, losing the rest of the list. This is the classic
+pointer-update gotcha: \textbf{always copy out before you overwrite}.
+\end{ideabox}
+
+\begin{notebox}[Why prepending into an array is different]
+On an array-backed list, prepending means shifting every existing
+item one slot to the right: $O(n)$. On a linked list it's just two
+pointer writes: $O(1)$. The linked list doesn't have to keep items
+adjacent in memory, so it never needs to shift.
+\end{notebox}
+
+\subsection{Cost summary}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Operation}    & \textbf{Singly linked list} & \textbf{Why} \\
+\hline
+\texttt{append}       & $O(1)$ with tail pointer    & Two writes; no traversal \\
+\texttt{prepend}      & $O(1)$                      & Two writes; no traversal \\
+\hline
+\end{tabular}
+\end{center}
+
+Both basic insertions are constant time. That's the primary
+advantage of a linked list over an array for workloads that
+repeatedly add at the ends.
+
+\subsection{Language conventions for ``null''}
+
+\begin{defnbox}[Null]
+A \textbf{null pointer} is a pointer that points to nothing. Every
+pointer must either point to a valid object or be explicitly null.
+Languages name this differently:
+\begin{itemize}[leftmargin=*]
+  \item C++: \texttt{nullptr} (modern), \texttt{NULL} (old C-style macro, avoid)
+  \item C: \texttt{NULL}
+  \item Java: \texttt{null}
+  \item Python: \texttt{None}
+  \item Rust / Swift: they avoid null via the \texttt{Option} type
+\end{itemize}
+In all cases the concept is the same: a sentinel value indicating
+``no object here.''
+\end{defnbox}
+
+\begin{warnbox}[Use \texttt{nullptr}, not \texttt{NULL} or \texttt{0}]
+In modern C++ (C++11 and later), always use \texttt{nullptr}. It's
+type-safe: \texttt{NULL} is often defined as plain \texttt{0}, which
+can accidentally be taken as an integer in overload resolution.
+\texttt{nullptr} has its own dedicated type (\texttt{nullptr\_t}) and
+can't be confused with an integer. Every linked-list node in this
+course will initialize its pointers to \texttt{nullptr}.
+\end{warnbox}
+
+\subsection{What's coming next}
+
+\begin{ideabox}[The remaining SLL operations]
+Append and prepend are the easy cases because they touch the list's
+endpoints, where we already have pointers. The operations coming in
+4.3 -- insert-after-a-known-node, and remove-by-value -- are harder
+because they involve traversing the list or keeping a \emph{trailing}
+pointer to the node \emph{before} the one you want to modify. That
+trailing-pointer pattern is the core awkwardness of singly linked
+lists and the main motivation for \textbf{doubly} linked lists a
+few sections later.
+\end{ideabox}
+
+\begin{notebox}[C++ owns its memory explicitly]
+The pseudocode takes a \texttt{newNode} as a parameter and doesn't
+discuss where it came from. In C++, you'll usually \texttt{new Node(x)}
+to allocate and \texttt{delete} to free. Later, \texttt{std::list}
+does all of that inside its \texttt{push\_back(x)}. This chapter
+works with raw pointers to expose the mechanics; in production code
+you'd use the STL container or smart pointers (\texttt{std::unique\_ptr})
+to automate the memory management.
+\end{notebox}
+
+\section{4.3 Singly Linked Lists: Insert-After}
+
+Append and prepend covered the two endpoints. \textbf{Insert-after}
+is the general case: given a pointer to some existing node
+\texttt{curNode}, splice a \texttt{newNode} in right after it. The
+operation is still $O(1)$ -- because we already have a pointer to
+the splice point -- but the bookkeeping has to handle three cases
+instead of two.
+
+\begin{defnbox}[Insert-after]
+\textbf{InsertAfter(list, curNode, newNode)} inserts \texttt{newNode}
+immediately after \texttt{curNode} in the list. If \texttt{curNode}
+is \texttt{null} (or the list is empty), \texttt{newNode} becomes
+the only node. If \texttt{curNode} is the current \texttt{tail},
+\texttt{newNode} becomes the new tail.
+\end{defnbox}
+
+\subsection{The three cases}
+
+The pseudocode looks like it's handling three unrelated scenarios,
+but they all flow from the same question: \emph{which of the list's
+invariants does this insertion threaten?}
+
+\begin{ideabox}[What the list has to stay true to]
+A well-formed singly linked list always satisfies:
+\begin{enumerate}[leftmargin=*]
+  \item \texttt{head} points to the first node or is \texttt{null}.
+  \item \texttt{tail} points to the last node or is \texttt{null}.
+  \item The last node's \texttt{next} is \texttt{null}.
+  \item \texttt{head} is \texttt{null} iff \texttt{tail} is \texttt{null}.
+\end{enumerate}
+Every insertion must preserve all four. The three cases in the
+algorithm each exist because a different invariant is at risk.
+\end{ideabox}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{3.8cm}p{8.2cm}@{}}
+\hline
+\textbf{Case} & \textbf{What needs updating} \\
+\hline
+Empty list                    & Both \texttt{head} and \texttt{tail} \\
+\texttt{curNode} is the tail  & Tail's \texttt{next} pointer, and \texttt{tail} itself \\
+\texttt{curNode} is interior  & Just two \texttt{next} pointers (no head/tail changes) \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{The algorithm}
+
+\begin{examplebox}[\texttt{insertAfter}]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void insertAfter(LinkedList& list, Node* curNode, Node* newNode) {
+    if (list.head == nullptr) {                  // Case 1: empty list
+        list.head = newNode;
+        list.tail = newNode;
+    }
+    else if (curNode == list.tail) {              // Case 2: after tail
+        list.tail->next = newNode;
+        list.tail       = newNode;
+    }
+    else {                                         // Case 3: interior
+        newNode->next = curNode->next;
+        curNode->next = newNode;
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+\begin{warnbox}[Case 3 is where most beginners trip]
+The interior case has two assignments, and \emph{order matters}:
+\begin{enumerate}[leftmargin=*]
+  \item \texttt{newNode$\to$next = curNode$\to$next} -- make
+        \texttt{newNode} point at what used to come after
+        \texttt{curNode}. \emph{Copy out before overwriting.}
+  \item \texttt{curNode$\to$next = newNode} -- then slot
+        \texttt{newNode} in after \texttt{curNode}.
+\end{enumerate}
+Swap them and you overwrite \texttt{curNode$\to$next} first, losing
+the rest of the list forever. Same pointer-update discipline as in
+prepend -- make sure the new node is fully stitched \emph{before}
+you change the node already in the list.
+\end{warnbox}
+
+\subsection*{Picture of the interior splice}
+
+\begin{center}
+\footnotesize
+Before:\\
+\texttt{... $\to$ [curNode | $\bullet$] $\to$ [nextNode | ...] $\to$ ...}
+\\[0.5em]
+Step 1: \texttt{newNode$\to$next = curNode$\to$next}\\
+\texttt{... $\to$ [curNode | $\bullet$] $\to$ [nextNode | ...] $\to$ ...}\\
+\texttt{\phantom{... $\to$ [curNode | $\bullet$]\ }\ $\nwarrow$}\\
+\texttt{\phantom{... $\to$ }[newNode | $\bullet$]}
+\\[0.5em]
+Step 2: \texttt{curNode$\to$next = newNode}\\
+\texttt{... $\to$ [curNode | $\bullet$] $\to$ [newNode | $\bullet$] $\to$ [nextNode | ...] $\to$ ...}
+\end{center}
+
+Two pointer writes, no scan. Constant time.
+
+\subsection{Why we need the curNode argument}
+
+\begin{ideabox}[``Insert at position $k$'' isn't a list-ADT primitive]
+A client that wants to insert at a specific numeric position $k$
+has to \emph{walk} the list to find the node at index $k - 1$ first.
+That walk is $O(k)$, not $O(1)$. The list ADT's primitive is
+\texttt{InsertAfter(curNode, newNode)} -- it assumes you already
+have a pointer to the right spot. How you got that pointer (cached
+from before, returned by a previous operation, walked to find)
+isn't the ADT's concern.
+
+This is why singly linked lists are often described as supporting
+``$O(1)$ insertion \emph{given a pointer}'' -- the pointer is
+assumed to be available.
+\end{ideabox}
+
+\subsection{Mapping to \texttt{std::list}}
+
+\begin{examplebox}[The STL version]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+#include <list>
+std::list<int> l = {7, 9, 5};
+
+auto it = std::next(l.begin(), 1);   // iterator to the "9"
+l.insert(it, 42);                    // inserts *before* it: 7, 42, 9, 5
+
+auto it2 = std::next(l.begin(), 1);  // iterator to the "42"
+l.insert(std::next(it2), 100);       // inserts before "9": 7, 42, 100, 9, 5
+\end{lstlisting}
+\texttt{std::list::insert(pos, x)} inserts \emph{before}
+\texttt{pos}. To insert \emph{after} a position, pass
+\texttt{std::next(pos)}. The STL picks ``before'' because that's
+what \texttt{pos = end()} naturally means -- insert at the end.
+Under the hood it's the same two-pointer splice, just with a
+doubly linked list.
+\end{examplebox}
+
+\begin{notebox}[Why the pseudocode picks ``after'' instead of ``before'']
+On a singly linked list, inserting \emph{before} a node is
+surprisingly annoying -- you need a pointer to the node \emph{that
+points to} the target, i.e.\ its predecessor. The list doesn't
+provide that; you'd have to walk from \texttt{head} to find it,
+making the operation $O(n)$. Inserting \emph{after} only needs the
+target itself. That's why the SLL ADT exposes
+\texttt{InsertAfter}, not \texttt{InsertBefore}. Doubly linked
+lists, with back-pointers, get both for free.
+\end{notebox}
+
+\subsection{Cost}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Operation}    & \textbf{Singly linked list} & \textbf{Why} \\
+\hline
+\texttt{insertAfter(curNode, \ldots)} & $O(1)$      & Two pointer writes; no scan \\
+Find \texttt{curNode} by value or index & $O(n)$    & Walk from head \\
+\textbf{Insert by index $k$}            & $O(k) + O(1) = O(n)$ & Walk first, then splice \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[The $O(1)$ claim is only about the splice, not the find]
+Everyone who says ``linked lists have $O(1)$ insertion'' is
+technically right about the splice, but the \emph{find} is
+$O(n)$. Unless you're iterating the list and splicing as you go, or
+you already have a cached node pointer, the practical cost of
+``insert an item at position $k$'' is linear. This is the biggest
+source of confusion about linked-list performance.
+\end{warnbox}
+
+\section{4.4 Singly Linked Lists: Remove}
+
+Removal in a singly linked list has the same shape of problem as
+insertion: you need to update a \texttt{next} pointer that lives in
+the \emph{predecessor} of the node you want to delete -- and a
+singly linked list doesn't make that predecessor easy to reach. The
+workaround is the same one used by \texttt{insertAfter}: name the
+operation \textbf{RemoveAfter}, and make the caller pass the
+predecessor pointer.
+
+\begin{defnbox}[RemoveAfter]
+\textbf{RemoveAfter(list, curNode)} removes the node
+\emph{immediately after} \texttt{curNode}. Special case: if
+\texttt{curNode} is \texttt{null}, the function removes the
+\emph{head} (the first node has no predecessor inside the list
+itself).
+\end{defnbox}
+
+\subsection{Why predecessor-based removal?}
+
+\begin{ideabox}[The asymmetry that makes this awkward]
+To remove node $X$ from a linked list you have to rewrite
+\texttt{prev$\to$next} to skip over $X$ -- but in a singly linked
+list, \texttt{prev} isn't available from $X$ itself; there's no back
+pointer. The list has three realistic options:
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Walk from head} to find \texttt{prev}. $O(n)$.
+  \item \textbf{Make the caller hand us \texttt{prev}} and expose
+        \texttt{RemoveAfter(prev)}. $O(1)$.
+  \item \textbf{Switch to a doubly linked list} where each node
+        knows its predecessor. $O(1)$, but more memory.
+\end{enumerate}
+The textbook's ADT picks option 2. Option 3 is what we'll build in
+4.5.
+\end{ideabox}
+
+\subsection{The three cases}
+
+Two variables carry the state of the splice:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{curNode} -- the node \emph{before} the one being
+        removed (or \texttt{null} if we're removing the head).
+  \item \texttt{sucNode} -- the node \emph{after} the one being
+        removed (i.e., the new successor that the splice will
+        connect to).
+\end{itemize}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{4cm}p{8cm}@{}}
+\hline
+\textbf{Case} & \textbf{What gets updated} \\
+\hline
+Remove the head (\texttt{curNode} null)  & \texttt{head} moves to successor; if that's null, also null out \texttt{tail}. \\
+Remove an interior node                   & \texttt{curNode$\to$next} moves to successor. No endpoint changes. \\
+Remove the tail (\texttt{curNode$\to$next$\to$next} null) & \texttt{curNode$\to$next} becomes null; also move \texttt{tail} to \texttt{curNode}. \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{The algorithm}
+
+\begin{examplebox}[\texttt{removeAfter}]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void removeAfter(LinkedList& list, Node* curNode) {
+    // Case A: remove the head
+    if (curNode == nullptr && list.head != nullptr) {
+        Node* toFree = list.head;
+        Node* sucNode = list.head->next;
+        list.head = sucNode;
+        if (sucNode == nullptr) {        // list is now empty
+            list.tail = nullptr;
+        }
+        delete toFree;
+        return;
+    }
+
+    // Case B / C: remove the node after curNode (if one exists)
+    if (curNode != nullptr && curNode->next != nullptr) {
+        Node* toFree = curNode->next;
+        Node* sucNode = curNode->next->next;
+        curNode->next = sucNode;
+        if (sucNode == nullptr) {        // we just removed the tail
+            list.tail = curNode;
+        }
+        delete toFree;
+    }
+}
+\end{lstlisting}
+The textbook's pseudocode omits the \texttt{delete}. In real C++
+you \emph{must} free the removed node, or you leak memory. Python,
+Java, and JavaScript's garbage collectors would do it for you;
+C++ makes you explicit.
+\end{examplebox}
+
+\begin{warnbox}[Forgetting \texttt{delete} is a memory leak]
+Every \texttt{new} needs a matching \texttt{delete} unless a smart
+pointer is handling the ownership. Hand-rolled linked lists are one
+of the easiest places to leak memory in C++ because the node you
+unlink is no longer reachable from \texttt{head}, so nothing else
+will ever free it. \textbf{Cache the node before unlinking,
+reassign the pointers, then \texttt{delete} the saved node.}
+\end{warnbox}
+
+\begin{warnbox}[Do not \texttt{delete} before you finish reading]
+\texttt{Node* sucNode = curNode$\to$next$\to$next;} reads through
+\texttt{curNode$\to$next}. If you \texttt{delete curNode$\to$next}
+first, the subsequent dereference is undefined behavior. Order of
+operations:
+\begin{enumerate}[leftmargin=*]
+  \item Cache the node to be deleted.
+  \item Cache any pointers you'll need \emph{from} it.
+  \item Rewrite the surrounding pointers.
+  \item \texttt{delete} the cached node.
+\end{enumerate}
+This ``read-then-rewrite-then-delete'' rhythm is the heart of
+safe pointer surgery.
+\end{warnbox}
+
+\subsection*{Picture of the interior splice}
+
+\begin{center}
+\footnotesize
+Before:\\
+\texttt{... $\to$ [curNode | $\bullet$] $\to$ [victim | $\bullet$] $\to$ [sucNode | ...] $\to$ ...}
+\\[0.5em]
+After \texttt{curNode$\to$next = sucNode}:\\
+\texttt{... $\to$ [curNode | $\bullet$] $\to$ [sucNode | ...] $\to$ ...}
+\\[0.5em]
+The \texttt{victim} node is unreachable -- \texttt{delete} it.
+\end{center}
+
+\subsection{Cost}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Operation}                & \textbf{Singly linked list} & \textbf{Why} \\
+\hline
+\texttt{removeAfter(curNode)}     & $O(1)$                      & Two pointer writes; no scan \\
+Remove by value (find + remove)   & $O(n)$                      & Linear walk to find the predecessor \\
+Remove at index $k$               & $O(k) = O(n)$               & Walk to position, then splice \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Why we don't have \texttt{Remove(node)} directly}
+
+\begin{ideabox}[The ``remove given just the victim'' trick]
+There's a famous trick interview question: ``Given only a pointer
+to the node you want to delete in a singly linked list (not the
+head), delete it without a predecessor pointer.''
+
+The trick: \emph{copy the next node's data into the victim and
+delete the next node instead}. Works for interior nodes; fails for
+the tail (there's no successor to pluck data from).
+
+Real libraries avoid this contortion because it has subtle issues:
+dangling references held by callers, data-copy cost if values are
+large, ordering effects on equal-valued neighbors. \emph{Doubly
+linked lists} solve the problem cleanly -- they give you the
+predecessor pointer for free.
+\end{ideabox}
+
+\subsection{All five SLL operations together}
+
+Now that we have append / prepend / insert-after / remove-after,
+we can fill in the canonical cost table for a singly linked list
+with both head and tail pointers:
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Operation}   & \textbf{Cost}      & \textbf{Assumption} \\
+\hline
+\texttt{append(x)}        & $O(1)$         & Tail pointer cached \\
+\texttt{prepend(x)}       & $O(1)$         & -- \\
+\texttt{insertAfter(p, x)} & $O(1)$        & Caller has pointer \texttt{p} \\
+\texttt{removeAfter(p)}   & $O(1)$         & Caller has pointer \texttt{p} \\
+\texttt{search(x)}        & $O(n)$         & Linear scan \\
+\texttt{at(i)}            & $O(i)$         & Walk from head \\
+\texttt{remove(x)} by value & $O(n)$       & Search + splice \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{notebox}[\texttt{std::forward\_list} is this structure in the STL]
+\texttt{std::forward\_list} is the C++ singly linked list. Its
+iterators support \texttt{insert\_after} and \texttt{erase\_after}
+for exactly the reason described here -- those are the $O(1)$
+operations the structure can actually give you. It deliberately
+omits \texttt{size()}, \texttt{push\_back}, and bidirectional
+iteration because giving them would either force $O(n)$ costs or
+require back-pointers (which would make it \texttt{std::list}).
+\end{notebox}
+
+\begin{warnbox}[Linked lists rarely win in modern C++]
+Despite the clean $O(1)$ insertion/deletion, singly linked lists
+lose to \texttt{std::vector} on most real workloads -- even ones
+that intuitively seem to favor linked structure. The reasons are
+cache locality (a vector is one contiguous block; linked nodes are
+scattered) and per-node overhead (one pointer per item in an SLL,
+two in a DLL, zero in a vector). Use a linked list when you
+\emph{need} stable pointers into the middle of the list or when you
+splice big ranges; otherwise reach for a vector.
+\end{warnbox}
+
+\section{4.5 Linked List Search}
+
+Search on a linked list is exactly what you'd expect: start at the
+head, walk node-by-node following \texttt{next} pointers, stop when
+you find a match or hit \texttt{null}. This is \emph{linear search}
+from Chapter 3, applied to a linked-list structure. It's worth its
+own section because linked-list search exposes a recurring pattern
+-- the \emph{walker idiom} -- that will be the scaffolding for
+traversal, reversal, length computation, and many other linked-list
+algorithms.
+
+\begin{defnbox}[Linked-list search]
+Given a list and a \textbf{key}, search walks from the head and
+returns the first node whose \texttt{data} equals the key. If no
+node matches, it returns \texttt{nullptr}.
+\end{defnbox}
+
+\subsection{The algorithm}
+
+\begin{examplebox}[\texttt{search}]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+Node* search(const LinkedList& list, int key) {
+    Node* curNode = list.head;
+    while (curNode != nullptr) {
+        if (curNode->data == key) {
+            return curNode;
+        }
+        curNode = curNode->next;
+    }
+    return nullptr;
+}
+\end{lstlisting}
+Three things to notice: the loop advances through
+\texttt{curNode = curNode$\to$next}; the termination check is on
+the pointer, not the data; and we return the \emph{pointer to the
+node}, not its index.
+\end{examplebox}
+
+\begin{ideabox}[The walker idiom]
+The structure \texttt{Node* curNode = list.head; while
+(curNode$\neq$nullptr) \{ \ldots; curNode = curNode$\to$next; \}} is
+the linked-list equivalent of \texttt{for (i = 0; i < n; ++i)} on
+an array. Almost every linked-list algorithm in this chapter --
+print, length, reverse, remove-by-value, insert-sorted -- is built
+on this idiom. Memorize it.
+\end{ideabox}
+
+\subsection{Why return a pointer instead of an index}
+
+\begin{warnbox}[Indices aren't the right return type for linked lists]
+On a vector, \texttt{find} returns an index. On a linked list,
+returning an index would be almost useless -- the caller would have
+to walk from head \emph{again} to reach that position. Returning a
+\emph{pointer to the node} gives the caller immediate access to the
+data and to its neighbors for subsequent \texttt{InsertAfter} or
+\texttt{RemoveAfter} calls. The ADT is designed around passing
+these node pointers around.
+
+The STL mirrors this: \texttt{std::find} on a vector returns an
+iterator that's effectively a pointer into the array;
+\texttt{std::find} on a list returns an iterator that wraps a node
+pointer. Same \emph{idea}, different underlying representation --
+which is exactly what an ADT/iterator abstraction is for.
+\end{warnbox}
+
+\subsection{Cost}
+
+\begin{ideabox}[$O(n)$, always]
+Linked-list search has to examine each node in turn until it finds
+the key or exhausts the list. No structural shortcut is available
+-- we can't binary-search a linked list, because reaching the
+middle is $O(n/2) = O(n)$ on its own. Sorted or unsorted, the
+linked-list search runtime is $\Theta(n)$ worst case.
+\end{ideabox}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Case}    & \textbf{Comparisons} & \textbf{Runtime} \\
+\hline
+Key at head       & 1                   & $O(1)$ \\
+Key at position $k$ & $k + 1$           & $O(k)$ \\
+Key absent         & $n$                & $O(n)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[Sorting a linked list doesn't help search]
+On an array, sorting unlocks binary search: $O(\log n)$. On a
+linked list, it does not. Even with a sorted linked list, you
+can't jump to the middle element in constant time. The best you
+can do is stop early when a value exceeds the key (``early exit''
+on sorted data):
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+while (curNode != nullptr && curNode->data < key) {
+    curNode = curNode->next;
+}
+return (curNode && curNode->data == key) ? curNode : nullptr;
+\end{lstlisting}
+Helpful on hits near the front; still $\Theta(n)$ worst case.
+\end{warnbox}
+
+\subsection{Linked-list search is hostile to CPU caches}
+
+\begin{ideabox}[Why array search beats linked search in practice]
+Asymptotically, linear scan on a vector and linear search on a
+linked list are both $\Theta(n)$. On real hardware they differ by
+$10\times$ or more. The reason: a vector stores values in a single
+contiguous block of memory, so the CPU's prefetcher can pull ahead
+and cache the next dozens of elements before you ask for them. A
+linked list's nodes can be scattered anywhere in the heap, and
+following \texttt{next} pointers is a series of dependent loads
+that the prefetcher cannot anticipate. Every \texttt{curNode =
+curNode$\to$next} potentially stalls waiting on main memory.
+
+This is the top reason modern code prefers \texttt{std::vector}
+even when textbook analysis suggests \texttt{std::list} would work.
+\end{ideabox}
+
+\subsection{Two common variations}
+
+\begin{examplebox}[Return a pointer \emph{and} its predecessor]
+Sometimes a caller wants both the found node and the one before it
+-- so they can immediately \texttt{RemoveAfter}. The idiom tracks
+\texttt{prev} alongside \texttt{curNode}:
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+std::pair<Node*, Node*> searchWithPrev(const LinkedList& list, int key) {
+    Node* prev = nullptr;
+    Node* cur  = list.head;
+    while (cur != nullptr) {
+        if (cur->data == key) return {cur, prev};
+        prev = cur;
+        cur  = cur->next;
+    }
+    return {nullptr, nullptr};
+}
+\end{lstlisting}
+The \texttt{prev} pointer is the ``trailing pointer'' trick. It's
+the closest a singly linked list gets to a doubly linked list's
+back pointer, synthesized fresh on each walk.
+\end{examplebox}
+
+\begin{examplebox}[Recursive search]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+Node* searchRec(Node* cur, int key) {
+    if (cur == nullptr)        return nullptr;
+    if (cur->data == key)      return cur;
+    return searchRec(cur->next, key);
+}
+\end{lstlisting}
+Same algorithm, recursive shape. Intellectually clean, but each
+call adds a stack frame -- $O(n)$ recursion depth. The iterative
+version uses $O(1)$ stack. Prefer iterative for long lists;
+recursive is just for illustration or when the language
+(e.g.\ functional languages with tail-call optimization) supports
+it cheaply.
+\end{examplebox}
+
+\begin{warnbox}[Linked lists and recursion don't mix well in C++]
+A 100{,}000-node list processed with recursive \texttt{search} will
+happily blow your stack. Tail-call elimination isn't guaranteed in
+C++, and even when compilers do it, they don't always. Keep the
+iterative version as your default for any traversal that could hit
+long lists.
+\end{warnbox}
+
+\subsection{What search gives you}
+
+\begin{ideabox}[The building block]
+\texttt{search} is the first operation that doesn't already have a
+cached pointer handed to it. Most higher-level operations you'd
+write -- ``remove all nodes with value $x$,'' ``insert $y$ after
+the first $x$,'' ``count how many $x$'s are in the list'' -- are
+variations of search with different actions on match. The walker
+idiom plus a small change at the match site gives you almost
+everything.
+\end{ideabox}
+
+\section{4.6 Doubly Linked Lists}
+
+The pain of a singly linked list lives at the \texttt{prev}
+pointer it doesn't have: no cheap reverse traversal, no removal
+without a predecessor argument, no insertion ``before'' a known
+node. The \textbf{doubly linked list} spends one extra pointer per
+node to erase all of these problems. You get bidirectional
+traversal, $O(1)$ removal given the victim itself, and a cleaner
+(if wordier) splice operation.
+
+\begin{defnbox}[Doubly linked list]
+A \textbf{doubly linked list (DLL)} is a linked list where each
+node has two pointers: \texttt{next} to its successor and
+\texttt{prev} to its predecessor. The list still holds \texttt{head}
+and \texttt{tail} pointers; the head node's \texttt{prev} is
+\texttt{null} and the tail node's \texttt{next} is \texttt{null}.
+\end{defnbox}
+
+\begin{ideabox}[The picture]
+\texttt{null $\leftarrow$ [$\bullet$ | 7 | $\bullet$] $\leftrightarrow$ [$\bullet$ | 9 | $\bullet$] $\leftrightarrow$ [$\bullet$ | 5 | $\bullet$] $\to$ null}
+
+Each cell has \texttt{prev} on the left and \texttt{next} on the
+right. The bidirectional arrows capture that every link is
+traversable both ways.
+\end{ideabox}
+
+\subsection{The node type in C++}
+
+\begin{examplebox}[A DLL node]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+struct DNode {
+    int    data;
+    DNode* next;
+    DNode* prev;
+
+    DNode(int d) : data(d), next(nullptr), prev(nullptr) {}
+};
+
+struct DLinkedList {
+    DNode* head = nullptr;
+    DNode* tail = nullptr;
+};
+\end{lstlisting}
+One extra pointer per node compared to an SLL. On a 64-bit system
+that's 8 extra bytes per item; for 32-bit \texttt{int} data plus
+two 64-bit pointers, a DLL node is already 20 bytes of pointers
+and padding wrapping 4 bytes of data -- a 5$\times$ memory
+overhead versus a \texttt{std::vector<int>}. Bring this up when
+someone claims linked lists are ``cheap.''
+\end{examplebox}
+
+\subsection{Invariants}
+
+\begin{ideabox}[What a well-formed DLL always satisfies]
+\begin{enumerate}[leftmargin=*]
+  \item If \texttt{node$\to$next} is not null,
+        \texttt{node$\to$next$\to$prev} equals \texttt{node}.
+  \item If \texttt{node$\to$prev} is not null,
+        \texttt{node$\to$prev$\to$next} equals \texttt{node}.
+  \item \texttt{head$\to$prev == nullptr}, \texttt{tail$\to$next == nullptr}.
+  \item \texttt{head == nullptr} iff \texttt{tail == nullptr}.
+\end{enumerate}
+Every operation below has to restore all four invariants. A DLL
+bug is almost always a forgotten back-pointer update.
+\end{ideabox}
+
+\subsection{Append}
+
+\begin{examplebox}[\texttt{append} on a DLL]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void append(DLinkedList& list, DNode* newNode) {
+    if (list.head == nullptr) {          // empty list
+        list.head = newNode;
+        list.tail = newNode;
+    } else {                              // non-empty list
+        list.tail->next = newNode;        // stitch forward
+        newNode->prev   = list.tail;      // stitch backward
+        list.tail       = newNode;        // advance tail
+    }
+}
+\end{lstlisting}
+Compared to the SLL version, we do \emph{one extra write}: set
+\texttt{newNode$\to$prev = list.tail} before moving the tail. Still
+$O(1)$.
+\end{examplebox}
+
+\begin{warnbox}[Every next-write deserves a twin prev-write]
+The rule of thumb when implementing any DLL operation: for every
+\texttt{a$\to$next = b} you write, ask ``did I also write
+\texttt{b$\to$prev = a}?'' Skip that check and you'll silently break
+invariant 1. Many DLL bugs only show up when iterating the list
+\emph{backwards} -- which can be long after the broken write.
+\end{warnbox}
+
+\subsection{Prepend}
+
+Symmetric to append. Every \texttt{tail} becomes \texttt{head};
+every \texttt{next} swaps with \texttt{prev}.
+
+\begin{examplebox}[\texttt{prepend} on a DLL]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void prepend(DLinkedList& list, DNode* newNode) {
+    if (list.head == nullptr) {          // empty list
+        list.head = newNode;
+        list.tail = newNode;
+    } else {                              // non-empty list
+        newNode->next  = list.head;       // forward link in
+        list.head->prev = newNode;        // backward link in
+        list.head       = newNode;        // advance head
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+\subsection{What the back-pointer unlocks}
+
+\begin{ideabox}[Why the extra pointer is worth it]
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Reverse iteration.} Walk from \texttt{tail}
+        following \texttt{prev}. SLL can't do this without
+        reversing the list or recursing.
+  \item \textbf{\texttt{Remove(node)} with just the victim.} Given a
+        pointer to any node, you can unlink it without having the
+        predecessor cached -- you read \texttt{node$\to$prev} to
+        find it. SLL requires \texttt{removeAfter(prev)}.
+  \item \textbf{\texttt{InsertBefore(node, x)}.} Same reason:
+        \texttt{node$\to$prev} gives you everything needed to
+        splice before.
+  \item \textbf{\texttt{PrintReverse}, \texttt{Sort} with
+        bidirectional access, iterators in both directions.}
+\end{itemize}
+Every common list operation is either equivalent in cost to SLL or
+strictly easier on a DLL.
+\end{ideabox}
+
+\subsection{When the extra pointer is \emph{not} worth it}
+
+\begin{warnbox}[Two places SLL still wins]
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Memory-sensitive scenarios.} One pointer per node
+        instead of two is 50\% less pointer overhead. If you're
+        storing millions of tiny items, this actually matters.
+        \texttt{std::forward\_list} exists precisely for this.
+  \item \textbf{Intrusive linked lists in kernels or embedded
+        systems.} Fewer pointers mean smaller per-object headers.
+\end{itemize}
+Outside those niches, the DLL wins on ergonomics. \texttt{std::list}
+is a DLL, not an SLL, for this reason.
+\end{warnbox}
+
+\subsection{Cost of the endpoint operations}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}llll@{}}
+\hline
+\textbf{Operation}    & \textbf{SLL} & \textbf{DLL} & \textbf{Notes} \\
+\hline
+\texttt{append}       & $O(1)$       & $O(1)$        & One extra write on DLL \\
+\texttt{prepend}      & $O(1)$       & $O(1)$        & One extra write on DLL \\
+\texttt{insertAfter(n)} & $O(1)$    & $O(1)$        & DLL also has \texttt{insertBefore} \\
+\texttt{remove(n)}   & needs prev, so $O(n)$ to find it, then $O(1)$ & $O(1)$ given node & DLL wins outright \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{\texttt{std::list} is a circular DLL}
+
+\begin{notebox}[How the STL implements DLL]
+\texttt{std::list} uses a circular doubly linked list with a
+\emph{sentinel node}. A dedicated sentinel (not real data) sits
+between the tail and the head; the list is never empty in the
+linked-structure sense -- even an empty list has the sentinel
+pointing at itself. This trick eliminates all the ``is the list
+empty?'' special cases and gives \texttt{end()} a stable iterator
+to return, but you won't write it by hand in an intro course. The
+plain head/tail/null-terminator DLL here is the standard pedagogy.
+\end{notebox}
+
+\subsection{Where this is going}
+
+\begin{ideabox}[The rest of the DLL arc]
+Appending and prepending are the warm-up. The interesting DLL
+operations come next:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{InsertAfter} (4.7 if the textbook follows the
+        pattern): same as SLL plus one back-pointer update per side.
+  \item \textbf{Remove(node)}: the big payoff -- no
+        \texttt{prev}-arg needed.
+  \item \textbf{PrintReverse}: trivial on DLL, annoying on SLL.
+\end{itemize}
+Once you've seen DLL's remove, the trade-off between SLL and DLL
+should be obvious: you pay one extra pointer per node for a much
+cleaner API. For 99\% of production code, you take the deal.
+\end{ideabox}
+
+\begin{warnbox}[C++ memory hygiene reminder]
+The same \texttt{delete} discipline from the SLL remove section
+applies here: save the victim pointer, unlink all four
+neighboring pointers (two \texttt{next}, two \texttt{prev}),
+\texttt{delete} the victim. Smart pointers (\texttt{std::unique\_ptr})
+complicate DLL ownership because both \texttt{next} and \texttt{prev}
+``own'' each other -- don't naively wrap pointers in
+\texttt{unique\_ptr} on both sides or you'll get cyclic ownership.
+Typical practice: \texttt{prev} is a raw pointer; \texttt{next}
+is a \texttt{unique\_ptr}. Or, skip this and just use
+\texttt{std::list}.
+\end{warnbox}
+
+\section{4.7 Doubly Linked Lists: Insert-After}
+
+Insert-after on a doubly linked list is the same algorithm as the
+SLL version from 4.3, with one extra pointer write per affected
+side to keep the \texttt{prev} links in sync. The interior case --
+where all four invariants meet -- requires \textbf{four} pointer
+updates instead of the SLL's two. Each of the four has to happen in
+the right order, and every pattern you pick here will be the
+template for the rest of the DLL operations.
+
+\begin{defnbox}[InsertAfter on a DLL]
+\textbf{InsertAfter(list, curNode, newNode)} inserts
+\texttt{newNode} immediately after \texttt{curNode}. As in the SLL
+version, the three cases are ``empty list,'' ``\texttt{curNode} is
+the tail,'' and ``interior.'' Each case preserves the DLL's four
+invariants (both directions linked, head/tail nulls, empty-list
+agreement).
+\end{defnbox}
+
+\subsection{The three cases}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{3.8cm}p{3cm}p{5cm}@{}}
+\hline
+\textbf{Case} & \textbf{Pointer writes} & \textbf{Structures affected} \\
+\hline
+Empty list                      & 2 & \texttt{head}, \texttt{tail} \\
+\texttt{curNode} is tail        & 3 & tail's \texttt{next}, new node's \texttt{prev}, \texttt{tail} \\
+Interior                        & 4 & curNode's \texttt{next}, sucNode's \texttt{prev}, new node's \texttt{next} and \texttt{prev} \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{The algorithm}
+
+\begin{examplebox}[\texttt{insertAfter} on a DLL]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void insertAfter(DLinkedList& list, DNode* curNode, DNode* newNode) {
+    if (list.head == nullptr) {                      // Case A: empty
+        list.head = newNode;
+        list.tail = newNode;
+    }
+    else if (curNode == list.tail) {                  // Case B: after tail
+        list.tail->next = newNode;
+        newNode->prev   = list.tail;
+        list.tail       = newNode;
+    }
+    else {                                             // Case C: interior
+        DNode* sucNode = curNode->next;
+        newNode->next  = sucNode;
+        newNode->prev  = curNode;
+        curNode->next  = newNode;
+        sucNode->prev  = newNode;
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+\subsection*{Case C, step by step}
+
+The interior case is four pointer writes. The order is
+\emph{flexible}, but the intent must stay consistent: \textbf{wire
+the new node first, then redirect the existing ones}. Writing the
+old pointers first while the new node is still dangling breaks
+invariants mid-flight and can get you into trouble on multi-threaded
+or signal-interrupted code. Safe ordering:
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}rl@{}}
+\hline
+\textbf{Step} & \textbf{Write} \\
+\hline
+1 & \texttt{newNode$\to$next = curNode$\to$next}  (remember the successor first) \\
+2 & \texttt{newNode$\to$prev = curNode}            (wire the predecessor) \\
+3 & \texttt{curNode$\to$next = newNode}            (splice forward) \\
+4 & \texttt{sucNode$\to$prev = newNode}            (splice backward) \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[Don't overwrite \texttt{curNode$\to$next} before caching it]
+The \texttt{sucNode} local variable exists precisely to cache
+\texttt{curNode$\to$next} \emph{before} we overwrite it in step 3.
+If you skip the cache -- write step 3 first and then try to reach
+\texttt{sucNode} via \texttt{curNode$\to$next} -- you've lost the
+successor. Classic prerequisite for a ``why are half my nodes
+missing'' debugging session. \textbf{Cache out before you
+overwrite.}
+\end{warnbox}
+
+\subsection{Picture of the interior splice}
+
+\begin{center}
+\footnotesize
+Before:\\
+\texttt{... $\leftrightarrow$ [curNode] $\leftrightarrow$ [sucNode] $\leftrightarrow$ ...}
+\\[0.5em]
+After:\\
+\texttt{... $\leftrightarrow$ [curNode] $\leftrightarrow$ [newNode] $\leftrightarrow$ [sucNode] $\leftrightarrow$ ...}
+\end{center}
+
+Four arrows redirected. Nothing else changes -- the head, the tail,
+and any nodes further away are untouched.
+
+\subsection{Why inserting \emph{before} is now trivial}
+
+\begin{ideabox}[InsertBefore for free]
+On a singly linked list, \texttt{InsertBefore(node, x)} requires
+finding the predecessor -- a walk from \texttt{head}. On a doubly
+linked list, \texttt{node$\to$prev} is right there.
+\texttt{InsertBefore(node, x)} is \texttt{InsertAfter(node$\to$prev, x)}
+with one special case for \texttt{node == head}. That's why
+\texttt{std::list} and almost all modern container APIs use
+``insert \emph{before} position'' as their primitive: on a DLL
+it's natural.
+\end{ideabox}
+
+\begin{examplebox}[\texttt{insertBefore} on a DLL]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void insertBefore(DLinkedList& list, DNode* curNode, DNode* newNode) {
+    if (list.head == nullptr) {
+        list.head = newNode;
+        list.tail = newNode;
+    }
+    else if (curNode == list.head) {                   // before the head
+        newNode->next   = list.head;
+        list.head->prev = newNode;
+        list.head       = newNode;
+    }
+    else {
+        DNode* predNode = curNode->prev;
+        newNode->next  = curNode;
+        newNode->prev  = predNode;
+        predNode->next = newNode;
+        curNode->prev  = newNode;
+    }
+}
+\end{lstlisting}
+Symmetric to \texttt{insertAfter}, mirror-imaged. Same structure,
+same four-writes-in-interior-case, same cache-predecessor-first
+discipline.
+\end{examplebox}
+
+\subsection{Cost}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Operation}                   & \textbf{Cost} & \textbf{Assumption} \\
+\hline
+\texttt{insertAfter(curNode, x)}     & $O(1)$        & Caller has \texttt{curNode} \\
+\texttt{insertBefore(curNode, x)}    & $O(1)$        & Caller has \texttt{curNode} \\
+\texttt{insert at index $k$}          & $O(k)$        & Walk from head, then splice \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{warnbox}[``Four writes'' vs.\ SLL's ``two'' is not a real disadvantage]
+A DLL insertion does 2$\times$ the pointer writes of an SLL
+insertion, but both are constant-time. On modern hardware the extra
+writes are lost in the noise (pipelined, same cache line). What
+matters is that DLL inserts still don't scan or shift. You trade a
+few nanoseconds per insert for a vastly more useful API -- cheap
+reverse iteration, cheap removal from an arbitrary node, cheap
+insertBefore.
+\end{warnbox}
+
+\subsection{In the STL}
+
+\begin{examplebox}[\texttt{std::list::insert}]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+std::list<int> l = {7, 9, 5};
+auto it = std::next(l.begin(), 1);  // iterator to "9"
+
+l.insert(it, 42);                    // 7, 42, 9, 5  (insert before)
+l.insert(std::next(it), 100);        // 7, 42, 9, 100, 5 (insert after "9")
+\end{lstlisting}
+\texttt{std::list::insert(pos, x)} inserts \emph{before}
+\texttt{pos}. This is the only primitive the STL provides -- insert
+after is written as \texttt{insert(std::next(pos), x)}. The
+implementation under the hood is the four-pointer-write interior
+case above, wrapped in a circular-DLL-with-sentinel that also
+eliminates the ``empty list'' special case.
+\end{examplebox}
+
+\begin{ideabox}[Where this is going]
+With insertAfter done, the remaining operation is \textbf{remove}.
+The payoff of the DLL structure shows up there most clearly: with
+\texttt{prev} pointers available, removal given just the victim
+takes constant time and doesn't need a \texttt{removeAfter} trick.
+Section 4.8 (or whatever number the textbook assigns it) will make
+that concrete.
+\end{ideabox}
+
+\section{4.8 Doubly Linked Lists: Remove}
+
+This is where the extra \texttt{prev} pointer pays its rent.
+\textbf{On a DLL, removing a node takes $O(1)$ given nothing but the
+node itself} -- no predecessor argument, no backward scan. The SLL
+couldn't do this. The algorithm is also structurally cleaner:
+instead of three scenario branches, we use four \emph{independent}
+checks that each handle one of the pointers that might need
+updating.
+
+\begin{defnbox}[Remove on a DLL]
+\textbf{Remove(list, curNode)} unlinks \texttt{curNode} from the
+list and returns it (or frees it, depending on ownership). It
+updates up to four pointers: the predecessor's \texttt{next}, the
+successor's \texttt{prev}, and -- if \texttt{curNode} was at an
+endpoint -- the list's \texttt{head} or \texttt{tail}.
+\end{defnbox}
+
+\subsection{Four independent checks instead of three cases}
+
+The SLL's \texttt{RemoveAfter} had three cases. The DLL's
+\texttt{Remove} is organized differently: four independent
+``if this pointer exists, patch it'' checks. Any combination of
+them fires depending on where the victim sits.
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{5.3cm}p{6.7cm}@{}}
+\hline
+\textbf{Condition} & \textbf{Action} \\
+\hline
+\texttt{sucNode $\neq$ null}    & \texttt{sucNode$\to$prev = predNode} \\
+\texttt{predNode $\neq$ null}   & \texttt{predNode$\to$next = sucNode} \\
+\texttt{curNode == list.head}   & \texttt{list.head = sucNode} \\
+\texttt{curNode == list.tail}   & \texttt{list.tail = predNode} \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{ideabox}[Why four conditions cover all scenarios]
+\begin{itemize}[leftmargin=*]
+  \item Interior node: \texttt{sucNode} and \texttt{predNode} both
+        exist; \texttt{curNode} is neither head nor tail. Only the
+        first two conditions fire.
+  \item Head removal, list has other nodes: \texttt{sucNode}
+        exists, \texttt{predNode} is null, \texttt{curNode} is
+        head. Conditions 1 and 3 fire.
+  \item Tail removal, list has other nodes: \texttt{predNode}
+        exists, \texttt{sucNode} is null, \texttt{curNode} is tail.
+        Conditions 2 and 4 fire.
+  \item Only node in the list: both \texttt{sucNode} and
+        \texttt{predNode} are null; \texttt{curNode} is both head
+        and tail. Only conditions 3 and 4 fire, setting both to
+        \texttt{nullptr}. The list ends up empty.
+\end{itemize}
+Independence is elegant: each check restores one invariant, and
+the whole algorithm is just running all four.
+\end{ideabox}
+
+\subsection{The algorithm}
+
+\begin{examplebox}[\texttt{remove} on a DLL]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+void remove(DLinkedList& list, DNode* curNode) {
+    DNode* sucNode  = curNode->next;
+    DNode* predNode = curNode->prev;
+
+    if (sucNode  != nullptr) sucNode->prev  = predNode;
+    if (predNode != nullptr) predNode->next = sucNode;
+
+    if (curNode == list.head) list.head = sucNode;
+    if (curNode == list.tail) list.tail = predNode;
+
+    delete curNode;
+}
+\end{lstlisting}
+Six lines of logic, four conditional pointer writes, one
+\texttt{delete}. No traversal. $O(1)$ in all cases.
+\end{examplebox}
+
+\begin{warnbox}[Read \texttt{curNode$\to$next} and \texttt{curNode$\to$prev} \emph{before} \texttt{delete}ing]
+As in the SLL case: cache the neighbors out of \texttt{curNode}
+first, \emph{then} free the node. Reading through a freed pointer
+is undefined behavior. The order of operations in the code above is
+load neighbors $\to$ patch them $\to$ fix head/tail $\to$
+\texttt{delete}. Follow that sequence and you'll be safe.
+\end{warnbox}
+
+\subsection{Picture}
+
+\begin{center}
+\footnotesize
+Before, for an interior removal:\\
+\texttt{... $\leftrightarrow$ [predNode] $\leftrightarrow$ [curNode] $\leftrightarrow$ [sucNode] $\leftrightarrow$ ...}
+\\[0.5em]
+After:\\
+\texttt{... $\leftrightarrow$ [predNode] $\leftrightarrow$ [sucNode] $\leftrightarrow$ ...}
+\end{center}
+
+The \texttt{curNode} is short-circuited by updating exactly two
+pointers: \texttt{predNode$\to$next} and \texttt{sucNode$\to$prev}.
+The victim is then unreachable from the list and can be safely
+freed.
+
+\subsection{The big comparison to SLL}
+
+This is the place where the SLL/DLL trade-off lands most clearly.
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}p{4.3cm}p{3.5cm}p{3.5cm}@{}}
+\hline
+\textbf{Operation}             & \textbf{SLL}          & \textbf{DLL} \\
+\hline
+Remove, given node pointer     & $O(n)$ (scan for prev) or use awkward \texttt{RemoveAfter(prev)} & $O(1)$ from the node \\
+Remove by value                 & $O(n)$ (walk to find) & $O(n)$ (walk to find) + $O(1)$ unlink \\
+Remove during a walk           & $O(1)$ with trailing prev & $O(1)$ natively \\
+Splice a node between two existing lists & painful; need prev in both places & trivial with the node's prev/next pointers \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{ideabox}[The ``remove during a walk'' idiom]
+On a DLL you can walk forward and decide-to-remove as you go
+without tracking a trailing pointer -- \texttt{curNode$\to$prev}
+gives it to you. This is why \texttt{std::list::remove\_if} and
+related algorithms are so clean on \texttt{std::list}: remove
+wherever you like, the pointers are always available.
+\end{ideabox}
+
+\subsection{Cost}
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\hline
+\textbf{Operation}          & \textbf{Cost} & \textbf{Assumption} \\
+\hline
+\texttt{remove(node)}       & $O(1)$        & Caller has a pointer to the node \\
+Remove by value              & $O(n)$        & Linear search to find, then $O(1)$ unlink \\
+Remove at index $k$          & $O(k)$        & Walk to position, then $O(1)$ unlink \\
+Remove all of value $x$      & $O(n)$        & Single walk; remove matches in place \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Handling ownership in C++}
+
+\begin{warnbox}[Who frees the node?]
+If \texttt{remove} calls \texttt{delete curNode}, the caller must
+not \texttt{delete} it again. But if you want the caller to take
+ownership (say, to reinsert the node into a different list),
+\texttt{remove} should return the pointer instead of deleting. A
+clean API picks one -- mixing both leads to double-frees or leaks.
+\texttt{std::list::erase} deletes; \texttt{std::list::splice}
+moves. Pick the right primitive for the task.
+\end{warnbox}
+
+\begin{examplebox}[Return-the-node variant]
+\begin{lstlisting}[basicstyle=\ttfamily\small,frame=single,language=C++]
+DNode* unlink(DLinkedList& list, DNode* curNode) {
+    DNode* sucNode  = curNode->next;
+    DNode* predNode = curNode->prev;
+    if (sucNode  != nullptr) sucNode->prev  = predNode;
+    if (predNode != nullptr) predNode->next = sucNode;
+    if (curNode == list.head) list.head = sucNode;
+    if (curNode == list.tail) list.tail = predNode;
+    curNode->next = curNode->prev = nullptr;   // disconnect for safety
+    return curNode;                            // caller owns it now
+}
+\end{lstlisting}
+The \texttt{curNode$\to$next = curNode$\to$prev = nullptr} line
+matters: leaving stale pointers on a detached node invites bugs
+where the caller accidentally walks from it back into the old list.
+\end{examplebox}
+
+\subsection{Where this leaves the list ADT}
+
+\begin{ideabox}[The SLL/DLL decision, in one line]
+\emph{Singly linked list} is the minimal implementation of the list
+ADT. \emph{Doubly linked list} spends one extra pointer per node to
+make every operation that touches a known node constant time and
+every iteration bidirectional. For almost every real use case, take
+the deal.
+\end{ideabox}
+
+\begin{notebox}[Where this is going]
+Chapter 4's next arc moves from generic lists to \textbf{restricted}
+list-based ADTs: stacks, queues, and deques. Each one is ``a list
+with some operations removed so the remaining ones can be made
+cheaper or more predictable.'' Stacks and queues are both usually
+implemented as either a dynamic array or a (doubly) linked list;
+the work you've done here is the foundation for both.
+\end{notebox}
+
+\section{4.9 Linked List Traversal}
+
+Traversal is the loop that ties linked lists back to every other
+container: ``do something to each element.'' It is also the cheapest
+linked list operation to get right, because a linked list has
+exactly one shape of walk through it --- \texttt{curNode =
+curNode->next}, repeated until the pointer falls off the end.
+
+\begin{defnbox}[Traversal]
+An algorithm that visits every node in a list exactly once and
+performs some operation on each. The ``operation'' is a parameter
+of the traversal, not part of it: print, sum, check a predicate,
+copy into another container --- the walk is the same.
+\end{defnbox}
+
+\subsection*{The walker idiom, one more time}
+
+You have written this loop (or a close cousin) in every earlier
+section. It deserves its own name because it is the single
+building block under search, insert-after-value, remove-by-value,
+size, clear, copy, and almost any other ``go look at everything''
+operation.
+
+\begin{examplebox}[Forward traversal, the loop everyone writes]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+// Apply `visit` to every node in a singly-
+// or doubly-linked list, front to back.
+void traverse(Node* head) {
+    for (Node* cur = head; cur != nullptr; cur = cur->next) {
+        visit(cur);
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+Three things make this loop airtight. First, the starting state is
+the list handle (\texttt{head}), not a guess --- if the list is
+empty, \texttt{head} is \texttt{nullptr} and the loop body never
+runs. Second, the termination condition is \texttt{cur != nullptr},
+which works for length 0, length 1, and length n with no special
+cases. Third, the advance step is a single field read;
+\texttt{next} is either a valid node or the sentinel
+\texttt{nullptr} that the list's append/prepend/remove code is
+contractually required to maintain.
+
+\begin{warnbox}[Never dereference \texttt{cur} inside the condition]
+A common rookie loop is \texttt{while (cur->next != nullptr)},
+which walks \emph{between} pairs of nodes. That form is useful for
+\emph{predecessor-finding} (e.g., ``find the node before the one
+to delete''), but it is the \textbf{wrong} loop for a traversal.
+Using it for traversal silently skips the tail node. Match the
+loop shape to the question you are answering.
+\end{warnbox}
+
+\subsection*{Doubly-linked lists: reverse traversal for free}
+
+Because every node in a DLL carries a \texttt{prev} pointer and the
+list keeps a \texttt{tail} handle, you can walk the list backwards
+at the same cost as forwards. This is one of the concrete payoffs
+for the extra pointer per node discussed in section~4.6.
+
+\begin{examplebox}[Reverse traversal on a DLL]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void traverseReverse(DNode* tail) {
+    for (DNode* cur = tail; cur != nullptr; cur = cur->prev) {
+        visit(cur);
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+A singly-linked list has no efficient reverse traversal. The only
+way to visit the nodes in reverse is to either reverse the list
+first (O(n) destructive), push every node onto a stack during a
+forward pass (O(n) space), or use recursion (which is push-onto-
+a-stack by another name, using the call stack). All three cost
+Theta(n) extra work or space on top of the walk itself. The DLL
+does it in zero extra work because the backward links were already
+built.
+
+\subsection*{Cost}
+
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Operation} & \textbf{Cost} & \textbf{Notes} \\
+\hline
+Forward traversal (SLL or DLL) & $\Theta(n)$ & Must visit each node \\
+Reverse traversal (DLL)        & $\Theta(n)$ & Symmetric to forward \\
+Reverse traversal (SLL)        & $\Theta(n)$ & Plus $\Theta(n)$ space \\
+\hline
+\end{tabular}
+\end{center}
+
+The big-Theta is non-negotiable: to touch every element you pay
+n operations. The interesting cost is \emph{per-step}, which is
+O(1) for both SLL and DLL because each step is one pointer
+indirection. This is what makes the linked list traversal the
+same asymptotic cost as an array's \texttt{for (int i = 0; i < n;
+++i)} even though the underlying machine work is quite different.
+
+\begin{notebox}[Array traversal is faster in practice]
+A linked-list traversal is $\Theta(n)$, but so is an array's
+\texttt{for} loop --- and on real hardware the array wins by a
+large constant factor. Array elements are contiguous, so the CPU
+prefetches the next cache line while the current one is being
+processed; linked-list nodes are scattered across the heap, so
+each \texttt{cur = cur->next} is likely to miss the cache and
+stall. Big-O says they're equal. The wall clock says otherwise.
+This is one reason \texttt{std::vector} is the default C++
+container even when the textbook problem ``wants'' a list.
+\end{notebox}
+
+\subsection*{Traversal as the hidden primitive}
+
+Once you have the walker loop, almost every other ``touch
+everything'' operation is a specialization of it.
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Operation} & \textbf{What the walker body does} \\
+\hline
+\texttt{size()}         & Increment a counter \\
+\texttt{print()}        & Print \texttt{cur->data} \\
+\texttt{search(x)}      & Compare, return if found \\
+\texttt{sum()}          & Accumulate \texttt{cur->data} \\
+\texttt{clear()}        & \texttt{delete prev}, advance \\
+\texttt{copy()}         & Append \texttt{cur->data} to new list \\
+\texttt{contains(x)}    & Compare, return \texttt{bool} \\
+\hline
+\end{tabular}
+\end{center}
+
+The reason linked list code looks repetitive across the chapter
+is that it \emph{is} repetitive: every one of these operations
+is the same loop with a different body. If you find yourself
+writing the traversal scaffold for the fifth time in one class,
+that is the signal to factor out a higher-order helper that takes
+a callable --- which is exactly what the STL does in
+\texttt{std::for\_each}, \texttt{std::find\_if}, and
+\texttt{std::accumulate}.
+
+\begin{examplebox}[STL: traversal without writing the loop]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+#include <list>
+#include <algorithm>
+#include <numeric>
+#include <iostream>
+
+std::list<int> xs = {3, 1, 4, 1, 5, 9};
+
+// print each
+std::for_each(xs.begin(), xs.end(),
+              [](int v) { std::cout << v << ' '; });
+
+// find first element > 4
+auto it = std::find_if(xs.begin(), xs.end(),
+                       [](int v) { return v > 4; });
+
+// sum
+int total = std::accumulate(xs.begin(), xs.end(), 0);
+\end{lstlisting}
+\end{examplebox}
+
+\texttt{std::list} exposes iterators (\texttt{begin()},
+\texttt{end()}, \texttt{rbegin()}, \texttt{rend()}) that are the
+library's name for ``the current walker.'' Advancing an iterator
+with \texttt{++it} is exactly the \texttt{cur = cur->next} step;
+the iterator just hides the pointer. Once you understand the raw
+loop, the STL version stops looking magical.
+
+\begin{warnbox}[Do not modify the list \emph{during} a traversal]
+If the visit step can delete or re-link the current node, the
+naive loop is broken --- you will read \texttt{cur->next} from a
+node you just \texttt{delete}'d. The fix is the cache-before-
+overwrite pattern from the remove sections: grab
+\texttt{Node* nxt = cur->next;} before doing anything destructive,
+then advance to \texttt{nxt} at the end of the loop body. The
+STL's erase-returns-the-next-iterator idiom
+(\texttt{it = xs.erase(it)}) is the same pattern with iterator
+dress.
+\end{warnbox}
+
+\begin{ideabox}[Why this is the simplest section in the chapter]
+Every earlier linked-list operation had edge cases: empty list,
+single node, head, tail, interior, value-not-present. Traversal
+has \textbf{none} of those. The loop works for length 0 because
+\texttt{head == nullptr}. It works for length 1 because the
+single node's \texttt{next} is \texttt{nullptr}. It works for
+length n for the same reason. That simplicity is why every other
+linked-list algorithm is built on top of it --- get the walker
+right once and reuse it forever.
+\end{ideabox}
+
+\section{4.10 Sorting Linked Lists}
+
+Sorting is the first algorithm in this chapter that isn't just a
+walker variant. It's also where the cost difference between arrays
+and linked lists stops being theoretical --- many classic array
+sorts straight up don't work on a linked list, and the ones that
+do have a different implementation on each list flavor. Insertion
+sort was first analyzed on arrays in \textsection 3.15; here we
+adapt it to a linked-list traversal.
+
+\begin{ideabox}[The core question]
+Which sorting algorithms transplant cleanly to a linked list, and
+which need random access so badly they fall apart without it? The
+answer splits neatly: algorithms that walk the data once or twice
+(insertion, merge) transfer; algorithms that jump around by index
+(quick, heap, shell) do not.
+\end{ideabox}
+
+\subsection*{Insertion sort on a DLL: the easy case}
+
+Insertion sort on a doubly-linked list is almost identical to the
+array version. The outer loop visits each node starting from the
+second; the inner loop walks \texttt{prev} pointers back through
+the sorted prefix until it finds the right slot, then splices the
+current node there.
+
+\begin{examplebox}[DLL insertion sort]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void insertionSort(DList& L) {
+    DNode* cur = L.head ? L.head->next : nullptr;
+    while (cur) {
+        DNode* nxt = cur->next;   // cache before mutation
+        DNode* s   = cur->prev;
+        while (s && s->data > cur->data) s = s->prev;
+
+        L.remove(cur);
+        if (!s) L.prepend(cur);
+        else    L.insertAfter(s, cur);
+
+        cur = nxt;
+    }
+}
+\end{lstlisting}
+\end{examplebox}
+
+The cache-\texttt{nxt}-before-mutating pattern is the same one you
+saw in remove-during-traversal (section 4.9). You can't advance
+via \texttt{cur->next} after \texttt{L.remove(cur)} splices
+\texttt{cur} out --- its \texttt{next} may now point somewhere
+else, or may be stale.
+
+\begin{warnbox}[SLL insertion sort is structurally different]
+An SLL has no \texttt{prev} link, so you \emph{cannot} walk
+backward from \texttt{cur} through the sorted prefix. The SLL
+version flips the search: walk from \texttt{head} forward until
+you find the insertion point, then splice. Same O(n$^2$)
+asymptotic, different loop structure. Don't assume a doubly-linked
+algorithm ports to singly-linked; check that every pointer read
+you need actually exists.
+\end{warnbox}
+
+\begin{examplebox}[SLL insertion sort, forward-search variant]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+// Find the node *after which* `value` should go,
+// or nullptr if it belongs at the head.
+Node* findInsertPos(List& L, int value) {
+    Node* before = nullptr;
+    Node* cur    = L.head;
+    while (cur && value > cur->data) {
+        before = cur;
+        cur    = cur->next;
+    }
+    return before;
+}
+\end{lstlisting}
+\end{examplebox}
+
+\subsection*{Cost}
+
+\begin{center}
+\begin{tabular}{|l|c|c|l|}
+\hline
+\textbf{Variant} & \textbf{Best} & \textbf{Average/Worst} & \textbf{Why} \\
+\hline
+DLL insertion sort & $O(n)$    & $O(n^2)$ & Already-sorted skips inner loop \\
+SLL insertion sort & $O(n)$    & $O(n^2)$ & Descending list = trivial \\
+\hline
+\end{tabular}
+\end{center}
+
+The best-case $O(n)$ trigger differs between the two: a sorted DLL
+never enters the inner loop (the \texttt{prev} data is already
+smaller), while a reverse-sorted SLL inserts every element at the
+head --- \texttt{findInsertPos} returns \texttt{nullptr}
+immediately, which is also a no-op.
+
+\subsection*{Which array sorts survive the linked-list trip?}
+
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Algorithm} & \textbf{Port?} & \textbf{Reason} \\
+\hline
+Insertion sort & Yes      & Only needs neighbor access \\
+Merge sort     & Yes      & Splitting \& merging is pointer surgery \\
+Selection sort & Yes (ish) & Needs $n$ linear ``find min'' passes \\
+Shell sort     & No       & Gap-jumps require indexed access \\
+Quicksort      & Poor     & Partition needs both-ends access \\
+Heap sort      & No       & Heap needs parent/child by index \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{ideabox}[Why merge sort is the linked list sort]
+Merge sort is the textbook recommendation for linked lists.
+Splitting the list requires one walk to find the middle
+(\texttt{O(n)}, fine). Merging two sorted lists is pure pointer
+splicing: no array index math, no auxiliary buffer, no random
+access. Total cost: $O(n \log n)$ time, $O(\log n)$ stack, $O(1)$
+extra heap. That is the \emph{same} asymptotic as array merge
+sort \emph{without} the $O(n)$ scratch array. Linked lists don't
+win many contests, but they win this one.
+\end{ideabox}
+
+\begin{notebox}[What the STL actually does]
+\texttt{std::list::sort} is merge sort --- specifically a bottom-
+up, iterative merge sort that avoids recursion overhead.
+\texttt{std::forward\_list::sort} uses the same approach.
+\texttt{std::sort} on a \texttt{std::vector} is introsort (quick
+$\to$ heap fallback). The STL is explicit: you get different
+algorithms on different containers because the container shape
+determines what's cheap.
+\end{notebox}
+
+\section{4.11 Sentinel (Dummy) Nodes}
+
+Every removal and insertion algorithm you've written so far has a
+prologue: a cluster of \texttt{if} statements for the empty list,
+the head, and the tail. Sentinel nodes --- also called ``dummy''
+nodes --- are a structural trick that makes those special cases
+\emph{disappear}. You pay one pointer of overhead and a pinch of
+conceptual weirdness; in return, every other method gets shorter.
+
+\begin{defnbox}[Sentinel / dummy node]
+A permanent, data-less node that lives at the head (and optionally
+the tail) of a list. It is never returned to callers, never counts
+toward the list's size, and is never removed. Its purpose is
+purely structural: to guarantee that the ``real'' nodes always
+have a neighbor on one or both sides.
+\end{defnbox}
+
+\subsection*{Why the head-and-tail cases exist}
+
+Take a close look at \texttt{ListRemove} from section 4.8: the
+very first lines check \texttt{if (curNode == list->head)} and
+\texttt{if (curNode == list->tail)}. Those branches exist because
+\emph{head has no predecessor} and \emph{tail has no successor}.
+Most of the body is just ``update the list handle instead of an
+in-list pointer.''
+
+A sentinel makes head-has-no-predecessor false. Every real node
+now has a valid \texttt{prev} pointing to either another real
+node or the sentinel. The removal code never has to ask ``am I at
+the head?'' because it always has a predecessor to splice around.
+
+\begin{ideabox}[The pattern]
+Special cases at the boundary usually mean the data structure is
+missing something at the boundary. Sentinels are the canonical
+fix: add a virtual neighbor so the boundary stops being a
+boundary. This same idea shows up again in trees (nil/leaf
+sentinels in red-black trees), in graph algorithms (super-source
+/ super-sink nodes), and in strings (null terminators). Once you
+see it once you start seeing it everywhere.
+\end{ideabox}
+
+\subsection*{One dummy vs. two dummies}
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Variant} & \textbf{Simplifies} & \textbf{Still special-cases} \\
+\hline
+No sentinel        & ---          & head, tail, empty \\
+One head sentinel  & head/empty   & tail \\
+Two sentinels      & everything   & none (for interior ops) \\
+\hline
+\end{tabular}
+\end{center}
+
+The two-sentinel DLL is the cleanest: \texttt{ListRemove} is just
+``unsplice,'' with no branches at all, because both neighbors are
+guaranteed to exist.
+
+\begin{examplebox}[Two-sentinel DLL remove --- branchless]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void remove(DNode* cur) {
+    // cur is a real node, so cur->prev and cur->next
+    // are both non-null (they point at real nodes
+    // or at the sentinels).
+    cur->prev->next = cur->next;
+    cur->next->prev = cur->prev;
+    delete cur;
+}
+\end{lstlisting}
+\end{examplebox}
+
+Compare that with the no-sentinel version's four pointer checks
+(section 4.8). Both are $O(1)$ --- but the branchless version is
+faster in practice (the CPU loves straight-line code), shorter,
+and almost impossible to get wrong.
+
+\subsection*{What sentinels cost}
+
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Cost} & \textbf{Amount} & \textbf{Notes} \\
+\hline
+Extra memory     & 1 or 2 nodes & Constant, regardless of list size \\
+Extra complexity & ``size'' is tracked separately & \texttt{size() != number of nodes} \\
+Extra care       & iterators must skip sentinels & Usually hidden in \texttt{begin()}/\texttt{end()} \\
+\hline
+\end{tabular}
+\end{center}
+
+The ``size is tracked separately'' point matters for correctness.
+A sentinel-based list must either keep a size counter or define
+``size'' as ``number of nodes minus the sentinels.'' Walking the
+whole list and counting no longer gives the right answer for a
+caller who expects 0 on an empty list.
+
+\begin{warnbox}[The empty-list invariant flips]
+Without sentinels, an empty list is \texttt{head == nullptr}. With
+two sentinels, an empty list has \texttt{head->next == tail} (or
+equivalently \texttt{tail->prev == head}). If you inherit sentinel
+code without noticing, an empty-list check like
+\texttt{if (L.head == nullptr)} silently becomes ``is this list
+broken?'' rather than ``is this list empty?'' Update every such
+check to the new invariant when you add sentinels.
+\end{warnbox}
+
+\subsection*{Do real C++ lists use sentinels?}
+
+Yes. \texttt{std::list} in libstdc++ and libc++ is a doubly-linked
+circular list with a single sentinel. The list object itself
+\emph{contains} the sentinel inline (no heap allocation for
+an empty list), and \texttt{end()} returns an iterator to that
+sentinel. That's why dereferencing \texttt{end()} is undefined
+behavior but comparing against it is fine: the sentinel exists,
+it just doesn't hold a user value.
+
+\begin{notebox}[Circular + sentinel = extremely clean]
+libstdc++'s \texttt{std::list} is circular: \texttt{tail->next} is
+the sentinel, \texttt{sentinel->next} is the head, and
+\texttt{head->prev} is the sentinel. With one sentinel you get
+two-sentinel semantics for free, because the sentinel is
+simultaneously ``before head'' and ``after tail.'' If you're
+curious about the STL source, this is a good place to look ---
+it's short, clever, and illustrative.
+\end{notebox}
+
+\begin{ideabox}[When to use sentinels in your own code]
+For one-off assignment code: probably don't bother --- the
+branches you save aren't worth the conceptual weight. For
+library-quality data structures: almost always yes. The
+simplification to \emph{every} algorithm (insert, remove,
+traverse, even iterators) more than pays back the one-time
+complexity of ``there's a fake node at each end.''
+\end{ideabox}
+
+\subsection*{The payoff: \texttt{std::list::splice}}
+
+The circular-sentinel layout enables one operation that no
+contiguous container can match: moving an entire range of nodes
+between two lists in $O(1)$, regardless of range size. The STL
+exposes this as \texttt{std::list::splice}.
+
+\begin{examplebox}[\texttt{std::list::splice}: the operation only a linked list can do in $O(1)$]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+#include <list>
+std::list<int> a {1, 2, 3, 4, 5};
+std::list<int> b {10, 20, 30};
+
+// Move the [2, 3, 4] range from a into b before
+// the position of 20. O(1) -- no copies, no allocation.
+auto first = std::next(a.begin());      // points to 2
+auto last  = std::next(a.begin(), 4);   // points to 5 (one past 4)
+b.splice(std::next(b.begin()), a, first, last);
+
+// a is now {1, 5}; b is now {10, 2, 3, 4, 20, 30}.
+\end{lstlisting}
+\end{examplebox}
+
+The cost is $O(1)$ because splice only rewires four pointers ---
+the next/prev of the boundary nodes on each side. The range itself
+isn't touched. \texttt{std::vector} cannot do this without copying
+or moving every element in the range, an inherent $O(k)$ cost. This
+is the canonical answer to \emph{``why would I ever use
+\texttt{std::list} when vector usually wins?''} If your workload
+splices large ranges between lists, the linked structure pays for
+its cache-hostility and per-node allocation overhead. Otherwise it
+usually doesn't.
+
+\section{4.12 Recursion on Linked Lists}
+
+A linked list is a recursive data structure in disguise: it is
+``a head node plus the rest of the list, which is also a linked
+list.'' That definition practically hands you the recursive
+algorithms for free. Every iterative walker from the last few
+sections has a recursive twin that is often shorter, and
+\emph{occasionally} clearer --- at a real performance cost.
+
+\begin{ideabox}[The recursive mental model]
+Don't think ``the function calls itself.'' Think ``the function
+assumes its job on a smaller list is already done, and only has
+to handle one more node.'' If the list is empty, the work is
+zero. Otherwise, do the head, then trust the recursive call to
+handle the tail. That mindset makes the code write itself.
+\end{ideabox}
+
+\subsection*{Forward traversal, recursive}
+
+\begin{examplebox}[Recursive forward traverse]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void traverse(Node* node) {
+    if (!node) return;       // empty list: done
+    visit(node);             // head: do the work
+    traverse(node->next);    // tail: trust recursion
+}
+\end{lstlisting}
+\end{examplebox}
+
+Three lines, one branch. The base case is ``empty list,'' which
+maps exactly to \texttt{node == nullptr}. The inductive step is
+``visit head, recurse on tail.'' This is the cleanest expression
+of a traversal you can write --- and the iterative version from
+section 4.9 is still faster in practice.
+
+\subsection*{Forward vs. reverse: one line swap}
+
+The striking thing about recursive list code is how little has to
+change to reverse the order. Swap ``visit'' and ``recurse'' and
+you get a reverse traversal:
+
+\begin{examplebox}[Recursive reverse traverse]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void traverseReverse(Node* node) {
+    if (!node) return;
+    traverseReverse(node->next);  // recurse FIRST
+    visit(node);                  // then visit
+}
+\end{lstlisting}
+\end{examplebox}
+
+This works on a \emph{singly}-linked list --- no \texttt{prev}
+pointer needed. The reversal is hiding in the call stack: each
+activation records a node, all activations unwind in LIFO order,
+and visits happen on the way out.
+
+\begin{ideabox}[Recursion \emph{is} a stack]
+The call stack is a stack. Recursion that does work ``after the
+recursive call'' is literally pushing things onto a stack and
+processing them in reverse. This is why reverse traversal on an
+SLL ``costs nothing extra'' recursively but $O(n)$ space
+iteratively --- the cost didn't vanish, it's just hidden in the
+call stack. Section 4.14 will make this explicit by building a
+stack ADT.
+\end{ideabox}
+
+\subsection*{Recursive search}
+
+\begin{examplebox}[Recursive search]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+Node* search(Node* node, int key) {
+    if (!node)              return nullptr; // not found
+    if (node->data == key)  return node;    // found
+    return search(node->next, key);         // keep looking
+}
+\end{lstlisting}
+\end{examplebox}
+
+Three cases, each a single line. The third case is a \emph{tail
+call}: the recursive call is the last thing the function does.
+Some compilers (including modern g++/clang with \texttt{-O2}) can
+recognize this and rewrite it as a loop, reclaiming the stack
+frame each step. With tail-call optimization, the recursive
+version has the same stack cost as the iterative one. Without
+it, a 10,000-element list will blow the default 8MB stack on
+Linux somewhere around recursion depth 100,000 --- well above
+10k, but closer than you think.
+
+\subsection*{Cost: recursive vs iterative}
+
+\begin{center}
+\begin{tabular}{|l|c|c|l|}
+\hline
+\textbf{Operation} & \textbf{Rec. time} & \textbf{Rec. space} & \textbf{Iterative space} \\
+\hline
+Forward traverse  & $\Theta(n)$ & $\Theta(n)^*$ & $\Theta(1)$ \\
+Reverse traverse  & $\Theta(n)$ & $\Theta(n)$   & $\Theta(n)$ (explicit stack) \\
+Search            & $\Theta(n)$ & $\Theta(n)^*$ & $\Theta(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent$^*$ With tail-call optimization, $\Theta(1)$. C++ does
+\emph{not} guarantee TCO --- treat it as a performance
+optimization, not a correctness property.
+
+\begin{warnbox}[Stack overflow is a real risk]
+A long linked list plus a recursive traversal plus a compiler
+that didn't eliminate the tail call = stack overflow. The default
+thread stack on Linux is 8MB; on Windows, 1MB; on embedded
+systems, often kilobytes. A stack overflow is usually a hard
+crash with no useful error message. For production code on
+arbitrarily-sized input, prefer iteration. For algorithms where
+the recursion depth is bounded (like tree traversals with
+$O(\log n)$ depth), recursion is fine.
+\end{warnbox}
+
+\begin{notebox}[When recursion is genuinely better]
+Flat lists rarely benefit from recursion --- iteration wins on
+every axis except elegance. Where recursion pays off: trees
+(chapter 6), graphs, divide-and-conquer sorts (merge sort's
+``split the list, sort each half''). The unifying property is
+branching: when each step produces multiple subproblems, the
+recursive structure is essential. One-way linked lists branch
+only once per step, which is why iteration is almost always the
+right tool here.
+\end{notebox}
+
+\begin{ideabox}[Before you move on]
+Write both versions once for each algorithm in this chapter.
+Not because you'll use the recursive ones in real code, but
+because the back-and-forth forces you to see the same algorithm
+from two angles. The loop variant and the recursive variant are
+always the same algorithm --- only the bookkeeping differs.
+Once you can translate between them freely, the rest of the
+course (especially trees and graph traversal) becomes much
+easier.
+\end{ideabox}
+
+\section{4.13 Stack ADT}
+
+Stacks are the first ``restricted list'' ADT. Where a list lets
+you touch any element, a stack lets you touch \emph{one}: the
+top. That single restriction is the entire point. It buys you a
+mental model (LIFO, last-in-first-out), a suite of cheap
+operations (everything $O(1)$), and a surprisingly long list of
+real-world algorithms that just fall out of it.
+
+\begin{defnbox}[Stack]
+A linear ADT with access restricted to one end, called the
+\emph{top}. Insertion (\emph{push}) and removal (\emph{pop})
+happen only at the top, so the most recently inserted element is
+always the first to come out --- last-in, first-out (LIFO).
+\end{defnbox}
+
+\subsection*{The five operations}
+
+\begin{center}
+\begin{tabular}{|l|l|c|}
+\hline
+\textbf{Op} & \textbf{Semantics} & \textbf{Cost} \\
+\hline
+\texttt{push(x)}  & Add \texttt{x} at top           & $O(1)$ \\
+\texttt{pop()}    & Remove and return top           & $O(1)$ \\
+\texttt{peek()}   & Return top without removing     & $O(1)$ \\
+\texttt{empty()}  & True iff no elements            & $O(1)$ \\
+\texttt{size()}   & Number of elements              & $O(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+All five are \emph{guaranteed} $O(1)$ --- that's not a coincidence,
+it's the contract. A data structure that calls itself a stack but
+has $O(n)$ push is mislabeled; the whole reason stacks exist is to
+be cheap.
+
+\begin{warnbox}[Pop/peek on empty is undefined]
+The ADT contract says nothing about what \texttt{pop()} or
+\texttt{peek()} does on an empty stack. Different implementations
+choose differently: \texttt{std::stack::pop} is UB (nothing
+returned, no throw); Python's \texttt{list.pop()} raises
+\texttt{IndexError}; some textbook versions return a sentinel.
+Always check \texttt{empty()} first, or use whatever
+error-signaling mechanism your library provides. Treat this like
+dereferencing a null pointer --- the language doesn't stop you,
+but the consequences are yours.
+\end{warnbox}
+
+\subsection*{C++: \texttt{std::stack}}
+
+C++ provides \texttt{std::stack} as a container \emph{adapter} ---
+a wrapper around an underlying container that exposes only the
+stack operations. The underlying container defaults to
+\texttt{std::deque} but can be any container that supports
+\texttt{push\_back}, \texttt{pop\_back}, and \texttt{back}.
+
+\begin{examplebox}[\texttt{std::stack} basics]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+#include <stack>
+#include <iostream>
+
+std::stack<int> s;
+s.push(7); s.push(14); s.push(9); s.push(5);
+
+while (!s.empty()) {
+    std::cout << s.top() << ' ';  // peek
+    s.pop();                      // remove
+}
+// Output: 5 9 14 7   (LIFO)
+\end{lstlisting}
+\end{examplebox}
+
+Notice \texttt{top()} is the STL's name for \texttt{peek()}, and
+\texttt{pop()} returns \texttt{void} --- you must call
+\texttt{top()} before \texttt{pop()} if you want the value. This
+split is deliberate: it avoids forcing a copy on every pop, which
+matters for stacks of expensive-to-copy types.
+
+\begin{ideabox}[When do you pick stack over list?]
+Use a stack when your algorithm only ever needs the most-recent
+item. That sounds restrictive, but it's \emph{exactly} the shape
+of: function calls (the call stack), parsing (parenthesis
+matching, shunting-yard), undo/redo, backtracking search, DFS
+graph traversal, expression evaluation, and reversing a
+sequence. If you catch yourself using \texttt{push\_back} /
+\texttt{pop\_back} on a \texttt{vector} and never touching any
+middle element, you have a stack --- consider using
+\texttt{std::stack} to make the intent obvious and prevent
+accidental misuse.
+\end{ideabox}
+
+\subsection*{Why restrict access at all?}
+
+A stack has strictly \emph{fewer} operations than a list. That
+seems strictly worse. The payoff is threefold:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Speed guarantee.} A list has $O(n)$ random access;
+          a stack's operations are all $O(1)$. The restriction is
+          what makes that guarantee possible.
+    \item \textbf{Code clarity.} A function that takes a
+          \texttt{stack<T>\&} advertises its intent: ``I will use
+          this LIFO.'' A function taking \texttt{vector<T>\&} is
+          making no such promise.
+    \item \textbf{Implementation freedom.} Once you commit to LIFO
+          semantics, the implementer can swap in any underlying
+          container (array, DLL, circular buffer) without
+          breaking callers.
+\end{enumerate}
+
+\begin{notebox}[The stack is the call stack is the stack]
+The term ``stack'' in ``call stack'' isn't a coincidence --- it
+\emph{is} the same ADT. When a function calls another, a stack
+frame is pushed. When it returns, the frame is popped. The
+recursive reverse-traversal from section 4.12 worked because the
+call stack \emph{is} a stack, and stacks reverse things. Any
+iterative algorithm you can write with an explicit stack, you can
+also write recursively (and vice versa). This equivalence is the
+backbone of most tree and graph algorithms in later chapters.
+\end{notebox}
+
+\section{4.14 Stacks via Linked Lists}
+
+Section 4.13 defined what a stack is. This section picks one
+concrete implementation: a singly-linked list where the head
+\emph{is} the top. Every stack operation becomes a list operation
+you already know.
+
+\subsection*{The mapping}
+
+\begin{center}
+\begin{tabular}{|l|l|c|}
+\hline
+\textbf{Stack op} & \textbf{List op (head = top)} & \textbf{Cost} \\
+\hline
+\texttt{push(x)}  & \texttt{prepend(x)}           & $O(1)$ \\
+\texttt{pop()}    & Read \texttt{head}, remove head & $O(1)$ \\
+\texttt{peek()}   & Read \texttt{head->data}      & $O(1)$ \\
+\texttt{empty()}  & \texttt{head == nullptr}      & $O(1)$ \\
+\texttt{size()}   & Counter updated on push/pop   & $O(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+The key design choice is \textbf{head-as-top}. Why not tail?
+Because in a \emph{singly}-linked list, prepending is $O(1)$ and
+appending-then-removing is $O(n)$ without a tail pointer (you'd
+still need to walk to find the new tail after popping). Putting
+the top at the head lines the cheap operations up perfectly.
+
+\begin{ideabox}[Choose the end that makes both sides cheap]
+For any restricted ADT (stack, queue, deque), the ``which end''
+decision is driven by which operations have to stay $O(1)$. For
+a singly-linked stack: head, because prepend and remove-head are
+both $O(1)$. For a singly-linked queue: head for dequeue,
+\emph{tail} for enqueue --- which is why a queue needs a tail
+pointer on an SLL but a stack doesn't. Section 4.15 will hit this
+exact wall.
+\end{ideabox}
+
+\subsection*{Implementation}
+
+\begin{examplebox}[Singly-linked stack]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+template <typename T>
+class Stack {
+    struct Node { T data; Node* next; };
+    Node*  head_ = nullptr;
+    size_t n_    = 0;
+
+public:
+    ~Stack() { while (!empty()) pop(); }
+
+    bool   empty() const { return head_ == nullptr; }
+    size_t size()  const { return n_; }
+
+    void push(const T& x) {
+        head_ = new Node{x, head_};  // prepend
+        ++n_;
+    }
+
+    T pop() {
+        // caller's responsibility: !empty()
+        Node*  top = head_;
+        T      val = std::move(top->data);
+        head_      = head_->next;
+        delete top;
+        --n_;
+        return val;
+    }
+
+    const T& peek() const { return head_->data; }
+};
+\end{lstlisting}
+\end{examplebox}
+
+A few things worth pointing out:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Destructor walks and frees.} A stack owns its
+          nodes. Without the destructor, every \texttt{Stack}
+          that goes out of scope while non-empty leaks the whole
+          chain.
+    \item \textbf{\texttt{n\_} counter.} Keeping \texttt{size()}
+          $O(1)$ requires maintaining a counter. Walking the list
+          every time would make \texttt{size()} $O(n)$, violating
+          the ADT contract.
+    \item \textbf{\texttt{pop} returns by value; \texttt{peek} by
+          const-reference.} Pop has to return because the node is
+          about to be deleted, so you can't hand out a reference
+          into freed memory. Peek can return a reference because
+          the node is still alive.
+\end{itemize}
+
+\begin{warnbox}[Copy/move semantics are easy to get wrong]
+A class that owns heap memory via a raw pointer needs the Rule of
+Three (destructor, copy constructor, copy assignment) or Rule of
+Five (add move versions). If you don't write them, C++ generates
+shallow copies --- two stacks will share node pointers and
+double-free on destruction. The clean fix: hold nodes with
+\texttt{std::unique\_ptr<Node>} so ownership is automatic, or
+just delegate to \texttt{std::list} / \texttt{std::forward\_list}
+underneath.
+\end{warnbox}
+
+\subsection*{Linked list vs. array backing}
+
+A stack doesn't \emph{have} to be a linked list. A dynamic array
+(\texttt{std::vector}) with push-back-as-push and pop-back-as-pop
+is often faster in practice because the elements are contiguous
+and the CPU prefetches. The tradeoff:
+
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Metric} & \textbf{Linked list} & \textbf{Dynamic array} \\
+\hline
+\texttt{push} worst case  & $O(1)$        & $O(n)$ (on resize) \\
+\texttt{push} amortized   & $O(1)$        & $O(1)$ \\
+\texttt{pop}              & $O(1)$        & $O(1)$ \\
+Cache friendliness        & Poor          & Excellent \\
+Memory overhead / elem    & 1 pointer     & 0--1 slot (slack) \\
+Handles huge sizes        & Any           & Any \\
+\hline
+\end{tabular}
+\end{center}
+
+For almost every use case, array-backed is the right default ---
+which is why \texttt{std::stack} defaults to \texttt{std::deque}
+(array-ish under the hood) rather than \texttt{std::list}. The
+linked-list version shines when you need \emph{guaranteed}
+worst-case $O(1)$ with no amortization.
+
+\begin{notebox}[Amortization, briefly]
+A \texttt{vector} push is $O(1)$ on average even though
+occasional resizes are $O(n)$. The trick: when the vector doubles
+its capacity, the $n$ work is spread across the next $n$ cheap
+pushes, so the \emph{amortized} cost is still $O(1)$. Linked
+lists don't need this argument --- every push is $O(1)$, full
+stop. For real-time systems where a single $O(n)$ spike would
+miss a deadline, the linked list's predictable timing wins.
+\end{notebox}
+
+\begin{ideabox}[The bigger lesson]
+Notice what just happened: you got stack $\to$ done, for free,
+by renaming a handful of list operations. That's the point of
+layered ADTs. You design the list once, stress-test it, and then
+every restricted list (stack, queue, deque) is a ten-line wrapper
+that inherits all the correctness work. Building bigger systems
+from smaller, already-correct ones is the core abstraction skill
+of this course.
+\end{ideabox}
+
+\section{4.15 Queue ADT}
+
+A queue is the stack's twin. Where a stack is LIFO (last-in,
+first-out), a queue is \emph{FIFO} (first-in, first-out). Both
+are restricted list ADTs with exactly two access points --- the
+only difference is whether you remove from the same end you insert
+at (stack) or the opposite end (queue).
+
+\begin{defnbox}[Queue]
+A linear ADT with insertion at one end (the \emph{rear} /
+\emph{back}) and removal at the other (the \emph{front}). Order
+is preserved: the item pushed first is the item popped first ---
+first-in, first-out (FIFO). British English calls a line at a
+shop a ``queue''; that is exactly the mental model.
+\end{defnbox}
+
+\subsection*{The five operations}
+
+\begin{center}
+\begin{tabular}{|l|l|c|}
+\hline
+\textbf{Op} & \textbf{Semantics} & \textbf{Cost} \\
+\hline
+\texttt{push(x)} / \texttt{enqueue} & Add \texttt{x} at rear & $O(1)$ \\
+\texttt{pop()}   / \texttt{dequeue} & Remove and return front & $O(1)$ \\
+\texttt{peek()}  / \texttt{front}   & Return front without removing & $O(1)$ \\
+\texttt{empty()} & True iff no elements & $O(1)$ \\
+\texttt{size()}  & Number of elements   & $O(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+Every operation is $O(1)$, same as a stack. The restriction
+(only two access points) is what makes this achievable --- a
+general list cannot guarantee $O(1)$ on both ends without extra
+structure.
+
+\begin{ideabox}[Stack vs. queue: a one-line summary]
+A stack pops what it just pushed. A queue pops what it pushed
+the longest time ago. Everything else about the two ADTs is the
+same: same shape (linear), same operation count (two active
+ends), same cost ($O(1)$ across the board). The semantic
+difference --- LIFO vs. FIFO --- is the only thing that actually
+changes.
+\end{ideabox}
+
+\subsection*{C++: \texttt{std::queue}}
+
+\texttt{std::queue} mirrors \texttt{std::stack}: a container
+adapter with a default underlying container (\texttt{std::deque})
+and a minimal interface. The names are slightly different because
+a queue has two ends.
+
+\begin{examplebox}[\texttt{std::queue} basics]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+#include <queue>
+#include <iostream>
+
+std::queue<int> q;
+q.push(7); q.push(14); q.push(9); q.push(5);
+
+while (!q.empty()) {
+    std::cout << q.front() << ' ';  // peek
+    q.pop();                        // remove
+}
+// Output: 7 14 9 5   (FIFO --- insertion order)
+\end{lstlisting}
+\end{examplebox}
+
+Notice the output is in \emph{insertion} order, not reversed like
+a stack. Also notice \texttt{std::queue} exposes both
+\texttt{front()} and \texttt{back()}; you can peek at either end
+but only pop from the front and push to the back.
+
+\subsection*{Where queues show up}
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Use case} & \textbf{What the queue represents} \\
+\hline
+BFS graph traversal   & Frontier of nodes to visit \\
+Scheduling (OS, jobs) & Tasks waiting to run \\
+Producer/consumer     & Work items, producer pushes, consumer pops \\
+Message passing       & Inbox (network, IPC) \\
+Printer / print spool & Jobs queued for the device \\
+Buffered I/O          & Bytes waiting to be read or written \\
+\hline
+\end{tabular}
+\end{center}
+
+The unifying theme: \emph{``things arrive over time; serve them
+in arrival order.''} That is a much more common pattern than LIFO,
+which is why queues are everywhere the moment you leave single-
+threaded algorithm land.
+
+\begin{notebox}[BFS uses a queue; DFS uses a stack]
+Graph breadth-first search with a queue explores nearer nodes
+first. Depth-first search with a stack (or recursion, which
+\emph{is} a stack) explores a path as far as possible before
+backtracking. The only difference between the two algorithms is
+which ADT holds the frontier. Same code, swap the data structure,
+get a different traversal order. This is one of the cleanest
+illustrations of why ``choice of ADT'' is an algorithmic choice.
+\end{notebox}
+
+\subsection*{Why a queue needs two pointers on a linked list}
+
+On a singly-linked list, pop-from-front is cheap (just advance
+\texttt{head}) but push-to-back is $O(n)$ --- unless you keep a
+tail pointer. A stack's linked implementation needs only the
+head, but a queue needs both head and tail because the two
+operations live at opposite ends.
+
+\begin{warnbox}[Don't forget to update tail on the last pop]
+When a queue empties, \texttt{head} becomes \texttt{nullptr} but
+you must also set \texttt{tail} to \texttt{nullptr} --- otherwise
+the next push will dereference a pointer to a freed node. This
+is the most common bug in handwritten queue code, and it only
+shows up in the empty-then-fill again path, which is easy to
+miss in testing. Section 4.16 walks through the full
+implementation.
+\end{warnbox}
+
+\begin{ideabox}[Preview: the other queues]
+The basic FIFO queue is the starting point, not the end. Later
+sections and courses will add: \emph{priority queue} (pop the
+\emph{smallest} element, not the oldest --- implemented with a
+heap), \emph{deque} (push and pop from both ends --- implemented
+with a doubly-linked list or a ring buffer), and \emph{circular
+queue} (fixed-capacity FIFO using modular arithmetic on an
+array). Each is a small variation on the same ``ordered work
+list'' theme.
+\end{ideabox}
+
+\section{4.16 Queues via Linked Lists}
+
+The queue-via-linked-list implementation is structurally almost
+identical to the stack version from 4.14, but with one critical
+addition: the queue needs a \emph{tail} pointer so push-to-back
+stays $O(1)$.
+
+\subsection*{The mapping}
+
+\begin{center}
+\begin{tabular}{|l|l|c|}
+\hline
+\textbf{Queue op} & \textbf{List op (head = front, tail = rear)} & \textbf{Cost} \\
+\hline
+\texttt{push(x)}  & \texttt{append(x)} via tail pointer & $O(1)$ \\
+\texttt{pop()}    & Read \texttt{head}, remove head    & $O(1)$ \\
+\texttt{peek()}   & Read \texttt{head->data}           & $O(1)$ \\
+\texttt{empty()}  & \texttt{head == nullptr}           & $O(1)$ \\
+\texttt{size()}   & Counter updated on push/pop        & $O(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+The design is \textbf{head-as-front, tail-as-rear}. Pop removes
+from the head ($O(1)$: advance \texttt{head}). Push adds at the
+tail ($O(1)$ \emph{only} if we keep a tail pointer).
+
+\begin{ideabox}[The tail pointer is the whole trick]
+Without a tail pointer, push is $O(n)$ --- you'd have to walk the
+whole list every time to find the end. \emph{With} a tail
+pointer, it's two pointer writes: set the old tail's
+\texttt{next} to the new node, then set \texttt{tail} to the new
+node. That one extra pointer is the difference between a useful
+data structure and a useless one.
+\end{ideabox}
+
+\subsection*{Implementation}
+
+\begin{examplebox}[Singly-linked queue with head and tail]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+template <typename T>
+class Queue {
+    struct Node { T data; Node* next; };
+    Node*  head_ = nullptr;
+    Node*  tail_ = nullptr;
+    size_t n_    = 0;
+
+public:
+    ~Queue() { while (!empty()) pop(); }
+
+    bool   empty() const { return head_ == nullptr; }
+    size_t size()  const { return n_; }
+
+    void push(const T& x) {
+        Node* node = new Node{x, nullptr};
+        if (tail_) tail_->next = node;  // link old tail
+        else       head_       = node;  // was empty
+        tail_ = node;
+        ++n_;
+    }
+
+    T pop() {
+        // caller's responsibility: !empty()
+        Node* front = head_;
+        T     val   = std::move(front->data);
+        head_ = head_->next;
+        if (!head_) tail_ = nullptr;    // queue now empty
+        delete front;
+        --n_;
+        return val;
+    }
+
+    const T& peek() const { return head_->data; }
+};
+\end{lstlisting}
+\end{examplebox}
+
+Two lines deserve close attention:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{The empty-push case.} When \texttt{tail\_} is
+          \texttt{nullptr}, the queue is empty; the new node is
+          simultaneously the head and the tail, so both pointers
+          must be set. Missing this turns a push on an empty
+          queue into a silent no-op.
+    \item \textbf{The empty-pop case.} When the pop removes the
+          last element, \texttt{tail\_} must be reset to
+          \texttt{nullptr} as well. Missing this leaves a
+          dangling pointer: the next push will write to
+          \texttt{tail\_->next}, which is a pointer into freed
+          memory.
+\end{itemize}
+
+\begin{warnbox}[Dangling tail is the classic bug]
+The most common bug in handwritten queues is forgetting the
+\texttt{if (!head\_) tail\_ = nullptr;} line. The bug does not
+trigger on the first few operations. It triggers on ``push, pop,
+push'' --- and even then only when the list has reached length
+zero. If your test suite never exercises that path you will ship
+the bug.
+\end{warnbox}
+
+\subsection*{Why not a doubly-linked list?}
+
+A DLL would work, but it's overkill. A queue never traverses
+backward, never inserts in the middle, and never removes from
+anywhere other than the head. The \texttt{prev} pointer on every
+node would be dead weight --- pure memory overhead with no
+corresponding operation to justify it.
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Operation} & \textbf{Needs prev?} \\
+\hline
+\texttt{push(x)}   & No (append at tail, only need tail->next) \\
+\texttt{pop()}     & No (remove head, only need head->next) \\
+\texttt{peek()}    & No \\
+\hline
+\end{tabular}
+\end{center}
+
+An SLL with head+tail is the minimum sufficient structure. That's
+usually the right way to choose data structures: add capability
+up to exactly what the operations demand, no further.
+
+\begin{notebox}[What about array-backed queues?]
+\texttt{std::queue}'s default (\texttt{std::deque}) is not a
+linked list at all --- it's a segmented array (``deque'' $=$
+double-ended queue). For most performance-sensitive work, a
+circular buffer (fixed-size array with head/tail indices and
+modular arithmetic) beats both the linked list and the deque
+because it has zero allocations per push and perfect cache
+locality. The tradeoff is a fixed capacity, which linked queues
+don't have. Pick based on whether your workload has a known upper
+bound on queue size.
+\end{notebox}
+
+\subsection*{Implementing the ring buffer}
+
+The notebox above gestures at the ring buffer; it deserves a
+concrete implementation, since it is the structure used in OS
+kernels for bounded producer-consumer queues, in audio/video
+pipelines for fixed-latency buffering, and inside
+\texttt{std::deque} block-by-block.
+
+\begin{defnbox}[Ring buffer (circular array queue)]
+A fixed-capacity array $Q[0\,..\,n-1]$ with two integer indices,
+\texttt{head} and \texttt{tail}, that wrap modulo $n$. Items live
+in $Q[\texttt{head}], Q[\texttt{head}+1], \ldots, Q[\texttt{tail}-1]$
+in circular order. Enqueue writes at $\texttt{tail}$ and advances
+$\texttt{tail} \gets (\texttt{tail}+1) \bmod n$; dequeue returns
+$Q[\texttt{head}]$ and advances $\texttt{head} \gets
+(\texttt{head}+1) \bmod n$. Both are $O(1)$ with zero allocation.
+\end{defnbox}
+
+\begin{examplebox}[Ring-buffer queue in C++]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+template <typename T, size_t N>
+class RingQueue {
+    T   buf_[N];
+    size_t head_ = 0;
+    size_t tail_ = 0;
+    size_t sz_   = 0;     // explicit size: avoids head==tail ambiguity
+public:
+    bool empty() const { return sz_ == 0; }
+    bool full()  const { return sz_ == N; }
+    size_t size() const { return sz_; }
+
+    bool enqueue(const T& x) {
+        if (full()) return false;     // caller decides: drop or block
+        buf_[tail_] = x;
+        tail_ = (tail_ + 1) % N;
+        ++sz_;
+        return true;
+    }
+
+    bool dequeue(T& out) {
+        if (empty()) return false;
+        out  = buf_[head_];
+        head_ = (head_ + 1) % N;
+        --sz_;
+        return true;
+    }
+};
+\end{lstlisting}
+\end{examplebox}
+
+\begin{warnbox}[Full-vs-empty disambiguation]
+$\texttt{head} == \texttt{tail}$ is ambiguous: it means \emph{both}
+``empty'' and ``full'' (after $n$ enqueues with no dequeues, the
+write pointer has wrapped all the way around to meet the read
+pointer). Two standard fixes:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Track size explicitly} (used above): one extra
+        \texttt{size\_t sz\_}, no wasted slots. Simplest.
+  \item \textbf{Leave one slot unused}: declare full when
+        $(\texttt{tail}+1) \bmod n == \texttt{head}$. Saves the size
+        counter but capacity becomes $n-1$. CLRS Ch 10.1 uses this.
+\end{itemize}
+Pick one; never pick neither.
+\end{warnbox}
+
+\begin{notebox}[Why ring buffers dominate in low-latency code]
+The ring buffer's appeal is structural, not just performance:
+fixed capacity at compile time, contiguous memory (cache-friendly),
+zero heap allocation per operation, and a trivially mappable
+single-producer-single-consumer lock-free variant (separate cache
+lines for head and tail, atomic loads/stores --- no mutex). When
+queue size has a known upper bound and latency matters, this is
+the implementation to reach for, not the linked-list version of
+\textsection 4.16 and not \texttt{std::queue}.
+\end{notebox}
+
+\begin{ideabox}[Comparing stack 4.14 to queue 4.16]
+Side by side: the stack's push was \texttt{prepend}, its pop was
+\texttt{remove-head}. The queue's push is \texttt{append}, its
+pop is \texttt{remove-head}. The \emph{only} structural
+difference between the two is which end the push happens at ---
+everything else (pop location, head pointer, size counter, empty
+check, destructor) is identical. The two ADTs are more similar
+than they are different; the semantics (LIFO vs. FIFO) emerge
+entirely from that one choice of end.
+\end{ideabox}
+
+\section{4.17 Deque ADT}
+
+A \emph{deque} (pronounced ``deck,'' short for \emph{d}ouble-
+\emph{e}nded \emph{que}ue) is the union of a stack and a queue.
+Where a stack restricts you to one end and a queue to two specific
+ends (front for pop, back for push), a deque lets you push and pop
+at \emph{either} end. That flexibility costs nothing in asymptotic
+time: all four operations remain $O(1)$.
+
+\begin{defnbox}[Deque]
+A linear ADT supporting insertion and removal at both the front
+and the back, each in $O(1)$. A deque generalizes both stacks
+(use only one end) and queues (push at one end, pop at the other)
+in a single structure.
+\end{defnbox}
+
+\subsection*{The eight operations}
+
+\begin{center}
+\begin{tabular}{|l|l|c|}
+\hline
+\textbf{Op} & \textbf{Semantics} & \textbf{Cost} \\
+\hline
+\texttt{push\_front(x)}  & Insert \texttt{x} at front       & $O(1)$ \\
+\texttt{push\_back(x)}   & Insert \texttt{x} at back        & $O(1)$ \\
+\texttt{pop\_front()}    & Remove and return front          & $O(1)$ \\
+\texttt{pop\_back()}     & Remove and return back           & $O(1)$ \\
+\texttt{peek\_front()}   & Return front without removing    & $O(1)$ \\
+\texttt{peek\_back()}    & Return back without removing     & $O(1)$ \\
+\texttt{empty()}         & True iff no elements             & $O(1)$ \\
+\texttt{size()}          & Number of elements               & $O(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection*{The ADT hierarchy, visualized}
+
+\begin{center}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{ADT} & \textbf{Push front} & \textbf{Push back} & \textbf{Pop front} & \textbf{Pop back} \\
+\hline
+Stack  &            &     $\bullet$     &             &     $\bullet$     \\
+Queue  &            &     $\bullet$     &  $\bullet$ &                    \\
+Deque  & $\bullet$ &     $\bullet$     &  $\bullet$ &     $\bullet$     \\
+\hline
+\end{tabular}
+\end{center}
+
+A stack is a deque that only uses one end. A queue is a deque that
+uses opposite ends. \emph{Every} stack and queue operation is also
+a valid deque operation --- deques strictly generalize both.
+
+\begin{ideabox}[Why not just always use a deque?]
+Because the restrictions on stacks and queues are \emph{features},
+not bugs. A function that takes a \texttt{stack\&} is declaring
+``I will only ever push/pop from the top''; the type system
+enforces that. Swap in a deque and you've invited bugs where
+future maintainers accidentally use \texttt{push\_front} and
+break the LIFO invariant. Use the most restrictive ADT that
+satisfies your algorithm --- it prevents misuse and
+self-documents intent.
+\end{ideabox}
+
+\subsection*{C++: \texttt{std::deque}}
+
+\texttt{std::deque} is a full container, not an adapter. It
+supports random-access iterators, \texttt{operator[]}, and the
+standard container interface on top of the eight deque ops.
+
+\begin{examplebox}[\texttt{std::deque} basics]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+#include <deque>
+#include <iostream>
+
+std::deque<int> d;
+d.push_back(7);     // d: 7
+d.push_front(14);   // d: 14 7
+d.push_front(9);    // d: 9 14 7
+d.push_back(5);     // d: 9 14 7 5
+
+std::cout << d.front() << ' ' << d.back() << "\n"; // 9 5
+d.pop_back();       // d: 9 14 7
+d.pop_front();      // d: 14 7
+std::cout << d[0] << "\n"; // 14  --- random access works
+\end{lstlisting}
+\end{examplebox}
+
+\begin{notebox}[\texttt{std::deque} is \emph{not} a linked list]
+Despite ``deque'' suggesting a linked-list double-ended queue,
+\texttt{std::deque} in libstdc++/libc++ is a segmented array
+--- a dynamic array of fixed-size chunks. Front and back push
+allocate a chunk at most occasionally (amortized $O(1)$), and
+random access is $O(1)$ because the chunk pointer array acts as
+a two-level index. This is why \texttt{std::stack} and
+\texttt{std::queue} default to \texttt{std::deque}: it gives them
+cheap insertion/removal at both ends with better cache behavior
+than a linked list.
+\end{notebox}
+
+\subsection*{Linked-list implementation: the DLL's payoff}
+
+A deque on a linked list is where the doubly-linked list finally
+earns its keep. Think about it:
+
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Operation} & \textbf{SLL cost} & \textbf{DLL cost} \\
+\hline
+\texttt{push\_front}  & $O(1)$ & $O(1)$ \\
+\texttt{push\_back}   & $O(1)$ (with tail) & $O(1)$ \\
+\texttt{pop\_front}   & $O(1)$ & $O(1)$ \\
+\texttt{pop\_back}    & $O(n)$ (no prev!)  & $O(1)$ \\
+\hline
+\end{tabular}
+\end{center}
+
+The fourth row is the killer. To pop the back of a singly-linked
+list, you have to walk the list to find the new tail (the
+second-to-last node), because there's no \texttt{prev} pointer to
+back up from the current tail. That walk is $O(n)$ --- game over
+for the ADT contract.
+
+\begin{warnbox}[You cannot build an $O(1)$ deque on an SLL]
+Not even with a tail pointer. Not even with clever bookkeeping.
+The pop-back operation fundamentally requires reaching the
+second-to-last node, which on an SLL means walking from the head.
+If anyone suggests an ``SLL-based deque,'' they either have an
+amortized scheme in mind or they have not thought it through. A
+deque demands a DLL (or an array).
+\end{warnbox}
+
+\begin{ideabox}[Why this chapter built toward this section]
+Look back at the order of topics: list $\to$ SLL $\to$ DLL $\to$
+stack $\to$ queue $\to$ deque. That progression isn't arbitrary.
+The stack worked on an SLL. The queue worked on an SLL (with a
+tail pointer). The deque \emph{requires} a DLL to preserve its
+cost contract --- the symmetric access pattern on both ends needs
+symmetric pointers on every node. This section is where all the
+``extra pointer per node'' discussion from 4.6 finally earns its
+cost.
+\end{ideabox}
+
+\section{4.18 Array-Based Lists}
+
+The chapter has spent 17 sections on pointer-based lists. This
+one finally asks: \emph{what if we implemented the list ADT on a
+plain old array instead?} The answer reshuffles the cost table.
+Array-based lists win on random access and cache performance, and
+lose on insertion/removal at the front. Neither approach is
+universally better --- they have complementary strengths.
+
+\begin{defnbox}[Array-based list]
+A list ADT implemented on top of a contiguous array. A
+\emph{dynamic} array-based list allocates more space than the
+current length, and resizes (reallocates larger, copies) when
+full. A \texttt{length} counter tracks how many slots are in use;
+the gap between \texttt{length} and \texttt{capacity} is the
+available headroom.
+\end{defnbox}
+
+\subsection*{The layout}
+
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|c|c|}
+\hline
+\multicolumn{4}{|c|}{\textbf{used}} & \multicolumn{4}{c|}{\textbf{unused capacity}} \\
+\hline
+\texttt{[0]} & \texttt{[1]} & \texttt{[2]} & \texttt{[3]} & --- & --- & --- & --- \\
+\hline
+45 & 84 & 12 & 78 & & & & \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent \texttt{length = 4}, \texttt{capacity = 8}. Elements
+live at indices \texttt{[0..length)}; the rest is reserved space
+that doesn't need to be copied on the next append.
+
+\subsection*{Append: amortized $O(1)$}
+
+\begin{examplebox}[Append to a dynamic array list]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void append(List& L, int value) {
+    if (L.length == L.capacity) {
+        resize(L, L.capacity == 0 ? 1 : L.capacity * 2);
+    }
+    L.array[L.length++] = value;
+}
+
+void resize(List& L, size_t newCap) {
+    int* p = new int[newCap];
+    for (size_t i = 0; i < L.length; ++i) p[i] = L.array[i];
+    delete[] L.array;
+    L.array    = p;
+    L.capacity = newCap;
+}
+\end{lstlisting}
+\end{examplebox}
+
+A single append is \emph{usually} $O(1)$: assign into
+\texttt{array[length]}, increment length. But when the array is
+full, the resize step is $O(n)$: allocate, copy every element,
+free the old array. So is append $O(1)$ or $O(n)$?
+
+\begin{ideabox}[Amortized analysis: doubling saves you]
+Start with capacity 1. After appending $n$ elements, the total
+copy work is $1 + 2 + 4 + \ldots + n/2 + n = 2n - 1$. That is
+$O(n)$ work spread across $n$ appends, so the \emph{average} per
+append is $O(1)$. This is \textbf{amortized} $O(1)$: any
+individual append might be slow, but over a long sequence the
+cost averages out. The magic number is the doubling factor ---
+grow by a constant factor (not a constant amount) or the
+argument breaks.
+\end{ideabox}
+
+\begin{warnbox}[Growing by +1 is the classic mistake]
+If you resize by adding a fixed amount (say, \texttt{capacity += 10})
+every time you fill up, appending $n$ elements costs
+$O(n^2)$ total, not $O(n)$. Every tenth append triggers a full
+copy, and those copies grow linearly. Always grow by a \emph{factor}
+(1.5x, 2x --- both work), never an additive constant.
+\end{warnbox}
+
+\subsection*{Prepend and insert: the expensive operations}
+
+Appending is cheap because the free space lives at the end.
+Prepending is \textbf{$O(n)$} because every existing element has
+to shift right by one to make room at index 0. Inserting after
+index $k$ shifts everything in $[k+1, \text{length})$ --- worst
+case $O(n)$, best case (insert at the end) $O(1)$.
+
+\begin{examplebox}[Array prepend: linear shift]
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small,frame=single]
+void prepend(List& L, int value) {
+    if (L.length == L.capacity) resize(L, L.capacity * 2);
+    for (size_t i = L.length; i > 0; --i) {
+        L.array[i] = L.array[i - 1];       // O(n) shift
+    }
+    L.array[0] = value;
+    ++L.length;
+}
+\end{lstlisting}
+\end{examplebox}
+
+\subsection*{The full cost comparison}
+
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Operation} & \textbf{Array-based} & \textbf{Linked list} \\
+\hline
+\texttt{append}                 & $O(1)^*$ & $O(1)$ (with tail) \\
+\texttt{prepend}                & $O(n)$   & $O(1)$ \\
+\texttt{insert at index $k$}    & $O(n-k)$ & $O(n)$ to find, $O(1)$ to insert \\
+\texttt{remove at index $k$}    & $O(n-k)$ & $O(n)$ to find, $O(1)$ to remove \\
+\texttt{access by index}        & $O(1)$   & $O(n)$ \\
+\texttt{search by value}        & $O(n)$   & $O(n)$ \\
+\texttt{append (at end)}        & $O(1)^*$ & $O(1)$ \\
+Cache friendliness              & Excellent & Poor \\
+Memory overhead per element     & 0--1 slot  & 1--2 pointers \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent $^*$ amortized
+
+The two structures have \emph{complementary} strengths. Array-
+based wins on index access, cache behavior, and append. Linked
+wins on front operations and interior insertion once the position
+is known. Picking between them is an algorithmic choice driven
+by what operations dominate.
+
+\begin{ideabox}[The default is \texttt{std::vector}]
+In practice, C++ programmers reach for \texttt{std::vector}
+(dynamic array) first and only use \texttt{std::list} when they
+have a specific reason. The reasons: $O(n)$ front/middle
+operations are rarely actually the bottleneck, cache performance
+matters more than big-O for small-to-medium $n$, and memory
+overhead per element matters too. ``Always use a linked list for
+frequent insertions'' is a textbook myth that doesn't survive
+contact with modern hardware. Profile first.
+\end{ideabox}
+
+\begin{notebox}[C++: \texttt{std::vector} is the array-based list]
+\texttt{std::vector<T>} is precisely this data structure, with a
+few extras: exception safety, move semantics, allocators,
+iterators, \texttt{emplace\_back} for in-place construction, and
+\texttt{shrink\_to\_fit} for giving memory back. Its growth
+factor is implementation-defined --- libstdc++ uses 2x, MSVC
+uses 1.5x. The 1.5x choice is marginally more memory-efficient
+(the old buffer could be reused after a few rounds) but the
+difference rarely matters. For any array-based list task in this
+course, use \texttt{std::vector} unless you're explicitly
+implementing one from scratch.
+\end{notebox}
+
+\begin{warnbox}[Iterator / pointer invalidation on resize]
+When a \texttt{std::vector} resizes, every pointer, reference,
+and iterator into it becomes invalid --- the old memory is freed
+and the elements live at fresh addresses. Code like
+\texttt{auto\& x = v[0]; v.push\_back(...); x = 5;} is
+undefined behavior if the push triggered a resize. Linked lists
+don't have this problem (nodes stay where they were), which is
+one real use case for preferring them.
+\end{warnbox}
+
+\section*{List-variant decision matrix}
+
+The four realizations of the List ADT covered in this chapter --
+\textbf{dynamic array} (\texttt{std::vector}), \textbf{singly linked
+list} (SLL), \textbf{doubly linked list} (DLL), and \textbf{sentinel
+DLL} (or \texttt{std::list}) -- trade cost in predictable ways. This
+matrix is the decision you'll actually make on assignments.
+
+\begin{ideabox}[Cost of each List-ADT operation]
+All entries are worst-case unless marked. $n$ = list length.
+
+\vspace{0.4em}
+\noindent
+\begin{tabular}{@{}l|cccc@{}}
+\textbf{Operation}
+    & \textbf{Array}
+    & \textbf{SLL}
+    & \textbf{DLL}
+    & \textbf{Sentinel DLL}\\
+\hline
+Access $v[i]$           & $O(1)$            & $O(n)$            & $O(n)$            & $O(n)$\\
+Append (back)           & $O(1)^*$ amort.\  & $O(1)$ w/ tail    & $O(1)$ w/ tail    & $O(1)$\\
+Prepend (front)         & $O(n)$ shift      & $O(1)$            & $O(1)$            & $O(1)$\\
+Insert after node       & $O(n)$ shift      & $O(1)$            & $O(1)$            & $O(1)$\\
+Insert before node      & $O(n)$ shift      & $O(n)$            & $O(1)$            & $O(1)$\\
+Remove node (have ptr)  & $O(n)$ shift      & $O(n)$ find prev  & $O(1)$            & $O(1)$\\
+Remove by value         & $O(n)$            & $O(n)$            & $O(n)$            & $O(n)$\\
+Reverse traversal       & $O(n)$            & $O(n)$ reconstruct& $O(n)$            & $O(n)$\\
+Memory per element      & $\sim$ 4--8 B     & + 1 pointer       & + 2 pointers      & + 2 pointers\\
+Cache friendliness      & excellent         & poor              & poor              & poor\\
+\end{tabular}
+\end{ideabox}
+
+\begin{ideabox}[Which variant, for which job?]
+Read top-down; take the first match.
+
+\medskip
+\textbf{Do you need $O(1)$ indexing ($v[i]$)?}
+$\to$ \textbf{array-based} (\texttt{std::vector}). Nothing else gives you
+random access. Accept $O(n)$ middle inserts.
+
+\medskip
+\textbf{Is the data mostly appended/consumed at the \emph{ends} only?}
+(Stack: push/pop one end. Queue: enqueue one end, dequeue the other.
+Log buffer: append, scan.)\\
+$\to$ \textbf{array-based} for stacks (\texttt{std::stack} $\to$
+\texttt{std::deque}). \textbf{Array-based deque} or \textbf{linked list}
+for queues. \texttt{std::queue} uses \texttt{std::deque}.
+
+\medskip
+\textbf{Are you doing many mid-list inserts/removes, AND you already hold
+a pointer/iterator to the node (e.g., LRU cache, intrusive list in
+kernel code)?}\\
+$\to$ \textbf{DLL} (or \textbf{sentinel DLL}). This is the scenario linked
+lists win; every other scenario, arrays usually win.
+
+\medskip
+\textbf{Do you need bidirectional traversal?}
+$\to$ \textbf{DLL} or \textbf{sentinel DLL}. SLL only walks forward;
+walking backward means rebuilding a reverse list.
+
+\medskip
+\textbf{Do you want \texttt{insertBefore} as a primitive, or do the
+empty/first/last cases in your code feel gross?}\\
+$\to$ \textbf{sentinel DLL}. The dummy head/tail nodes make every splice
+look the same; no special-casing.
+
+\medskip
+\textbf{Is every byte precious (embedded, cold cache)?}
+$\to$ \textbf{SLL}, not DLL: one pointer per node, not two. And consider
+an \textbf{array-based list} anyway -- contiguous memory often wins even
+on ``slow at middle insert'' workloads because of cache.
+
+\medskip
+\textbf{Still unsure?}
+$\to$ \textbf{array-based list} (\texttt{std::vector}). It's the right
+default. Linked lists are special-purpose; reach for them when you have
+a concrete reason (pointer stability, intrusive data, O(1) splicing).
+\end{ideabox}
+
+\begin{warnbox}[The ``linked lists are always faster for middle insert''
+myth]
+The Big-O says so; real benchmarks often disagree. Inserting into a
+\texttt{std::vector} at position $k$ is $O(n)$ shifts of small contiguous
+bytes -- extremely cache-friendly. Inserting into a \texttt{std::list} is
+$O(1)$ but requires walking to position $k$ first, pointer-chasing
+non-contiguous nodes -- extremely cache-hostile. Below roughly $10^4$
+elements, vector insert-at-middle usually wins. Above it, it depends on
+access pattern. \textbf{Measure, don't assume.}
+\end{warnbox}
+
+\begin{ideabox}[Chapter 4 wrap-up]
+You've now seen two complete implementations of the list ADT
+--- one pointer-based, one array-based --- and three restricted
+variants (stack, queue, deque) layered on top. The unifying
+theme: \textbf{cost is a function of layout}, not of semantics.
+Two data structures with the same API can have wildly different
+performance characteristics because their memory layout makes
+different operations cheap. Chapter 5 moves from linear
+containers to hierarchical ones (trees), where the layout
+decisions get even more interesting.
+\end{ideabox}
+
+\section*{What this connects to}
+
+\begin{notebox}[Forward links to later chapters]
+\begin{itemize}
+    \item \textbf{Chapter 5 (hash tables).} Chaining is implemented as an
+    array of \emph{linked lists}: the node + pointer idiom from this
+    chapter is reused verbatim as the overflow chain per bucket.
+    \item \textbf{Chapter 6 (trees, BSTs).} The node \texttt{struct}
+    generalizes from one \texttt{next} pointer to two (\texttt{left},
+    \texttt{right}). Tree traversal is linked-list traversal with a
+    branching factor of 2.
+    \item \textbf{Optional ch.~10 (graphs).} Adjacency-list graph
+    representation is \texttt{vector<vector<int>>} -- i.e., a vector of
+    lists. The cost arguments here tell you when to prefer adjacency
+    matrix instead.
+    \item \textbf{Stack / queue reuse everywhere.} DFS uses an explicit
+    stack (or the call stack). BFS uses a queue. Expression parsing, undo
+    systems, and recursion unwinding all lean on the Stack ADT from 4.13.
+\end{itemize}
+\end{notebox}
+
+\textbf{Companion materials.} Compact notes:
+\texttt{chapters/ch\_4/notes.tex} (includes the decision matrix in compact
+form). Practice prompts (problem $\to$ pseudocode $\to$ C++):
+\texttt{chapters/ch\_4/practice.md}.
+
+\end{document}

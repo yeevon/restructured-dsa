@@ -1,0 +1,2229 @@
+\documentclass[11pt]{article}
+\input{../../notes-style.tex}
+
+\title{CS 300 -- Chapter 2 Lectures\\\large Introduction to Algorithms}
+\author{Jose de Lima}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{ideabox}[Chapter map]
+\textbf{Where this sits in CS 300.} Chapter 1 taught you how to \emph{type}
+a loop; chapter 2 teaches you how to \emph{decide which loop to write} when
+you haven't been given one. This is the bridge between ``I can code'' and
+``I can solve a novel problem.'' Every later chapter is a specific data
+structure; this chapter is the \emph{meta-skill} of picking an algorithmic
+strategy in the first place.
+
+\textbf{What you add to your toolkit here:}
+\begin{itemize}
+    \item A vocabulary for problems vs.\ algorithms, and for what makes
+          one algorithm ``better'' than another (correctness, speed,
+          memory, simplicity).
+    \item A \textbf{recursive mindset}: base case + smaller subproblem.
+          Factorial and binary search are the training wheels; BSTs,
+          merge sort, and graph traversal all run on this.
+    \item Three named strategies you'll reach for repeatedly:
+          \textbf{heuristic}, \textbf{greedy}, \textbf{dynamic programming}.
+          Knowing when each is appropriate is half the exam.
+    \item An ethics / data-privacy framework so that the code you write
+          doesn't just \emph{work} but is defensible when someone asks
+          why you chose to collect or expose certain data.
+\end{itemize}
+
+\textbf{Mastery checklist} -- you should be able to, without references:
+\begin{enumerate}
+    \item State the two ingredients every recursive function needs,
+          and show what goes wrong if either is missing (infinite
+          recursion / wrong answer).
+    \item Write \texttt{factorial(n)} and \texttt{binarySearch(v, t)}
+          recursively in C++ \emph{and} iteratively, and argue when each
+          form is appropriate.
+    \item Explain why na\"ive recursive Fibonacci is exponential while
+          the iterative / memoized version is linear -- in terms of the
+          recursion tree, not hand-waving.
+    \item Given a new problem, correctly classify it as a candidate for
+          greedy, DP, or neither, and defend the choice with one of the
+          structural tests (greedy-choice property, optimal substructure,
+          overlapping subproblems).
+    \item Walk through the fractional-knapsack greedy proof (``always
+          pick highest value/weight ratio next'') and know why the
+          \emph{0/1} variant is not solvable greedily.
+    \item Identify overlapping subproblems in an LCS-like problem and
+          write the 2D recurrence relation before touching code.
+    \item Name at least one privacy or ethics consideration that could
+          change your design decision on a data-driven feature.
+\end{enumerate}
+
+\textbf{Looking ahead.} Chapter 3 gives you the formal language (Big-O)
+to justify the ``faster'' and ``slower'' claims you made informally here.
+The sorting algorithms in ch.~3 are concrete instances of the strategies
+here: insertion/selection sort are incremental, merge/quicksort are
+divide-and-conquer, radix sort is a non-comparison heuristic. Expect ch.~3
+to be easier if your ch.~2 recursion intuitions are solid.
+\end{ideabox}
+
+\section{2.1 Introduction to Algorithms}
+
+Chapter 1 covered the \emph{mechanics} of C++ -- vectors, strings,
+loops. Chapter 2 starts asking a different question: given a problem,
+what sequence of steps actually solves it, and how do you compare one
+sequence against another? That is the subject of \textbf{algorithms},
+and it is the real content of this course.
+
+\subsection{Problems vs. algorithms}
+
+Two words that get used interchangeably but mean different things.
+
+\begin{defnbox}[Computational problem]
+A \textbf{computational problem} is a precise specification of three
+things: the \textbf{input} the solver will receive, the
+\textbf{question} being asked about that input, and the \textbf{output}
+the solver should produce. It describes \emph{what} needs to be done,
+not \emph{how}.
+\end{defnbox}
+
+\begin{defnbox}[Algorithm]
+An \textbf{algorithm} is a finite, unambiguous sequence of steps that
+solves a computational problem. Algorithms describe \emph{how} the
+problem gets solved. The same problem can have many algorithms; the
+interesting question is usually which one is best.
+\end{defnbox}
+
+\begin{examplebox}[A problem and one algorithm that solves it]
+\textbf{Problem:} Given an array of numbers, what is the maximum value?
+
+\textbf{Algorithm (pseudocode):}
+\begin{verbatim}
+FindMax(a):
+    max = a[0]
+    for i = 1 to a.size - 1:
+        if a[i] > max:
+            max = a[i]
+    return max
+\end{verbatim}
+The problem specification does not mention a loop, or
+\texttt{max}, or \texttt{i}. Those are \emph{implementation decisions}
+the algorithm makes. A different algorithm -- e.g., sort the array and
+return the last element -- solves the same problem with different
+steps and different efficiency.
+\end{examplebox}
+
+\begin{notebox}[Algorithms exist independent of language]
+Algorithms are usually described in pseudocode, diagrams, or English
+because the language is incidental to the \emph{idea}. The C++
+implementation you will write in homework is just one translation of
+the algorithm. Binary search is binary search whether it is written
+in C++, Python, or executed by a human with a pencil.
+\end{notebox}
+
+\subsection{Why this matters: picking the right algorithm is the job}
+
+Most interesting problems you will ever see have already been reduced
+to a small set of well-known subproblems, each with a well-studied
+algorithm. Half of being a good engineer is recognizing which known
+problem the thing in front of you actually is.
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\textbf{Domain} & \textbf{Problem} & \textbf{Common algorithm} \\
+\hline
+DNA analysis & Longest shared subsequence & Longest common substring \\
+E-commerce / search & ``Is this product in stock?'' & Binary search \\
+Navigation & Fastest route A $\to$ B & Dijkstra's shortest path \\
+Scheduling & Which tasks can run first? & Topological sort \\
+Compilers / build & What to rebuild after a change & DFS on a dependency graph \\
+Spell check / autocomplete & Closest word to a typo & Edit distance (DP) \\
+\end{tabular}
+\normalsize
+\end{center}
+
+The CS 300 syllabus is essentially a tour of the right-hand column --
+sorting, searching, hashing, trees, heaps, graph traversal. Once you
+can name the tool, the implementation becomes mechanical.
+
+\subsection{What makes an algorithm ``good''?}
+
+The dominant metric is \textbf{runtime growth} -- how the number of
+steps changes as the input gets bigger. This is the subject of Chapter
+2 proper.
+
+\begin{defnbox}[Efficient algorithm (informal)]
+An algorithm is \textbf{efficient} if its runtime grows at most
+\textbf{polynomially} with the input size: $n$, $n \log n$, $n^2$,
+$n^3$, etc. Anything exponential ($2^n$, $n!$) is considered too slow
+to scale.
+\end{defnbox}
+
+\begin{notebox}[Why polynomial is the cutoff]
+It is an arbitrary line, but a useful one. Polynomial-time algorithms
+remain tractable as inputs grow -- doubling $n$ multiplies the runtime
+by a constant factor. Exponential algorithms do not -- doubling $n$
+can \emph{square} the runtime. On a modern machine, $2^{40}$ is
+measured in minutes; $2^{60}$ is measured in years. That is the
+difference between ``run it overnight'' and ``never finishes.''
+\end{notebox}
+
+\subsection{NP-complete problems: when no fast algorithm is known}
+
+Some problems have resisted every attempt to find an efficient
+algorithm. These are the \textbf{NP-complete} problems.
+
+\begin{defnbox}[NP-complete (intuitive)]
+A problem is \textbf{NP-complete} if:
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item nobody has found a polynomial-time algorithm for it,
+    \item nobody has proven that one is impossible, and
+    \item a fast algorithm for \emph{any} NP-complete problem would
+          give a fast algorithm for \emph{all} of them.
+\end{itemize}
+Whether \textbf{P = NP} -- i.e., whether such an algorithm exists -- is
+the most famous open problem in computer science.
+\end{defnbox}
+
+\begin{examplebox}[The clique problem]
+\textbf{Input:} a social-network graph and an integer $k$. \\
+\textbf{Question:} is there a set of $k$ people who all know each other?
+
+Finding a clique of size 3 in a small graph is easy. Finding one of
+size 50 in a graph of millions of nodes is, as far as anyone knows,
+beyond any algorithm that could finish this century. Same problem
+statement, exponentially harder instance.
+\end{examplebox}
+
+\begin{ideabox}[What you do when a problem is NP-complete]
+Not ``give up.'' The usual response is to solve a \emph{relaxed}
+version:
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Approximation:} find a provably-close-to-optimal
+          answer quickly.
+    \item \textbf{Heuristic:} use a good-enough rule of thumb that
+          works on typical inputs.
+    \item \textbf{Special-case:} if the input has extra structure
+          (sparse graph, small $k$, ordered input), a faster algorithm
+          may exist for that subset.
+\end{itemize}
+Recognizing a problem as NP-complete saves you from hunting for an
+efficient exact algorithm that doesn't exist. That is a skill in
+itself.
+\end{ideabox}
+
+\begin{ideabox}[Big picture]
+This course teaches two things simultaneously: a catalog of named
+algorithms that handle the most common computational problems, and a
+\emph{language} for comparing algorithms (big-O, which is formalized
+in chapter~3) so you can justify your choice. When you finish, the
+goal is not that you have memorized every pseudocode listing, but
+that you can look at a new problem, say ``that's a search on sorted
+data, so binary search is O($\log n$)'' -- and pick up the right tool
+without rediscovering it.
+\end{ideabox}
+
+\section{2.2 Problem Solving}
+
+Knowing C++ is a prerequisite for writing code, but it is not what
+makes programs \emph{work}. The hard part -- the part people are
+actually paid for -- is \textbf{problem solving}: figuring out a
+methodical sequence of steps that turns the input into the desired
+output. The programming language is just the notation you write that
+sequence down in, the way English is the notation a chef writes a
+recipe down in. Good recipes come from good cooking, not good English.
+
+\begin{defnbox}[Solution approach]
+A \textbf{solution approach} is the idea of how you will solve a
+problem, stated in words, diagrams, or pseudocode -- independent of
+any programming language. A good solution approach is worked out
+before any code is written; the code is the final translation, not
+the design.
+\end{defnbox}
+
+\subsection{A non-programming example: matching socks}
+
+Three kinds of socks sit unsorted in a drawer. You want one matching
+pair.
+
+\begin{examplebox}[Two approaches, very different runtimes]
+\textbf{Approach A -- ``try and put back'':} pull a sock, pull another,
+compare. If they match, done. Otherwise put the second one back and
+try again.
+
+\textbf{Approach B -- ``pull and keep'':} pull a sock, then another,
+then another, stopping only when you have a pair.
+
+Approach A has no guaranteed bound -- you could get unlucky for a
+long time. Approach B is bounded: with $k$ sock types, pulling
+$k + 1$ socks \emph{must} produce a match (this is the pigeonhole
+principle). For 3 sock types, four pulls is enough, always.
+\end{examplebox}
+
+\begin{notebox}[The pigeonhole principle]
+If $n+1$ items go into $n$ boxes, some box must contain at least
+two items. This comes back repeatedly -- hash-table collisions, proofs
+about sorting lower bounds, birthday-paradox arguments -- so
+recognizing it early is worth it. In the sock problem, the ``boxes''
+are the sock types and the ``items'' are the socks you've pulled.
+\end{notebox}
+
+\subsection{A programming-flavored example: sorting name tags}
+
+1000 name tags, currently sorted by first name, need to be re-sorted
+by last name.
+
+\begin{examplebox}[Two approaches]
+\textbf{Approach 1 -- ``insert each into a new sorted stack'':}
+take one tag at a time, walk down a new stack, drop it in the right
+place. Roughly $n^2$ comparisons, because each insertion scans
+everything already placed.
+
+\textbf{Approach 2 -- ``bucket then sort each bucket'':}
+make 26 sub-stacks, one per starting letter of the last name. Drop
+each tag into its letter's bucket. Sort each bucket individually.
+Concatenate the buckets in order.
+\end{examplebox}
+
+\begin{ideabox}[This is actually radix sort in disguise]
+Approach 2 is a hand-executed version of \textbf{radix sort} --
+partition by one ``digit'' of the key (here, the first letter of the
+last name), sort within each partition, and recombine. You will meet
+radix sort formally later in the course. The point here is that the
+two approaches give the same answer but the work is distributed very
+differently, and one of them is a named algorithm with well-known
+properties. Almost every ``clever'' approach you invent on a
+whiteboard turns out to be a known algorithm.
+\end{ideabox}
+
+\subsection{The 64-person greeting problem}
+
+An organizer wants every person at a 64-person meeting to greet every
+other person for 30 seconds. How long does this take?
+
+\begin{examplebox}[Doing the arithmetic]
+64 people, each pair meets once, so the number of pairs is
+$\binom{64}{2} = \frac{64 \cdot 63}{2} = 2016$ pairs. At 30 seconds
+each, that is $2016 \cdot 30 = 60{,}480$ seconds $\approx 16.8$ hours.
+\end{examplebox}
+
+\begin{ideabox}[The combinatorial trap]
+Schemes of the form ``everybody does something with everybody else''
+are $O(n^2)$. They \emph{look} linear in the problem statement
+(``just have everyone say hi'') but scale quadratically in practice.
+This is the same reason all-pairs-shortest-path takes $O(n^3)$, why
+bubble sort is $O(n^2)$, and why naively checking every pair of
+records in a database does not work at a million-row scale. Watch
+for ``every X with every other X'' in a problem statement -- it's
+a flag for $O(n^2)$.
+\end{ideabox}
+
+\subsection{A usable workflow}
+
+The approach this course will try to instill, roughly in order:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Read the problem until you can restate it in one
+          sentence} without looking at the prompt. If you cannot, you
+          haven't understood it yet; coding will not help.
+    \item \textbf{Solve a tiny example by hand.} Before writing code,
+          walk through the problem with a three- or four-element
+          input. This usually exposes missing details and suggests
+          an algorithm.
+    \item \textbf{Describe an approach in pseudocode or English.}
+          Steps, not syntax. If the approach doesn't work on paper,
+          C++ will not save it.
+    \item \textbf{Estimate the cost.} Will this scale to the largest
+          input the problem allows? If no, find a better approach
+          before you write any code.
+    \item \textbf{Translate to C++.} Now the language matters.
+          Idiomatic vectors, bounds checking, \texttt{.at()} while
+          debugging, algorithms from \texttt{<algorithm>} where they
+          fit.
+    \item \textbf{Test with the tiny example from step 2.} If the
+          output does not match, trace the loop (\textsection 1.10
+          methodology).
+\end{enumerate}
+
+\begin{warnbox}[The anti-pattern: code first, think later]
+The most common beginner mistake is to start typing at step 5, work
+out the approach through compiler errors, and debug by randomly
+changing conditions. It \emph{feels} productive (there are always
+more changes to try) but often results in code that passes the
+examples you happened to test and fails everything else. The
+up-front thinking from steps 1--4 takes minutes and saves hours.
+\end{warnbox}
+
+\begin{notebox}[Two paths to an algorithm: reduce, or design]
+The workflow above leaves the question of \emph{which} algorithm
+implicit. MIT 6.006 frames it as a top-level binary choice:
+
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item \textbf{Reduce to a problem you already know.} If the
+          problem looks like \emph{search}, reach for a search data
+          structure (array, hash table, BST). If \emph{sort}, reach
+          for a sort algorithm (insertion, merge, radix). If
+          \emph{shortest path}, a graph algorithm (BFS, Dijkstra,
+          Bellman-Ford). The cs-300 syllabus is essentially this
+          catalog of named problems and their canonical solutions.
+    \item \textbf{Design your own (recursive) algorithm.} If no
+          known problem fits, you're inventing. The strategies in
+          \textsection 2.4--\textsection 2.10 (recursion,
+          divide-and-conquer, DP, greedy, heuristics) are the
+          design patterns for that case.
+\end{enumerate}
+
+The reduce path is faster when it applies, which is most of the
+time on a coursework or job-interview problem. Train the
+recognition reflex first; the design strategies are what you fall
+back on when recognition fails.
+\end{notebox}
+
+\begin{ideabox}[Big picture]
+A programming language is a notation for expressing solutions; it is
+not itself a solution. The thing you develop in this course is the
+habit of looking at a problem, recognizing a structure you have seen
+before, picking the matching algorithm, and only then writing the
+C++. When you get stuck on a homework problem, the fix is almost
+never ``more C++'' -- it is going back to pseudocode or walking
+through a 3-element input by hand.
+\end{ideabox}
+
+\section{2.3 Computational Problem Solving}
+
+\textsection 2.2 framed problem solving in general terms. This section
+narrows in on the specific style of thinking that computing demands,
+which cognitive-science and CS-education literature has settled on
+calling \textbf{computational thinking}. It is four habits --
+decomposition, pattern recognition, algorithms, and abstraction --
+applied together. The names are generic; the habits are not.
+
+\subsection{The input > process > output model}
+
+Every program, no matter how large, fits the same shape at the top
+level: take input, compute, produce output (and/or persistent side
+effects). Keeping this shape in mind while designing prevents the
+common trap of conflating ``how data gets in'' with ``what we do with
+it.''
+
+\begin{examplebox}[Primality check, top-level view]
+\begin{verbatim}
+INPUT:    a positive integer n
+PROCESS:  decide whether n has any divisors other than 1 and n
+OUTPUT:   "prime" or "not prime"
+\end{verbatim}
+The process step is where the algorithm lives. The input and output
+steps are routine -- read an int, print a string -- and should not
+dominate your design time.
+\end{examplebox}
+
+\subsection{The four habits of computational thinking}
+
+\begin{defnbox}[Computational thinking]
+A problem-solving approach built from four interacting moves:
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Decomposition} -- break a big problem into smaller
+          pieces.
+    \item \textbf{Pattern recognition} -- notice repeated structure
+          within or across problems.
+    \item \textbf{Algorithms} -- express the solution as a precise
+          sequence of steps.
+    \item \textbf{Abstraction} -- generalize so one solution handles a
+          whole family of problems.
+\end{itemize}
+These are not stages in a waterfall. They feed each other: decomposing
+reveals patterns, patterns suggest algorithms, a finished algorithm
+gets abstracted so it can be reused.
+\end{defnbox}
+
+\subsection{Worked example: is $n$ prime?}
+
+Watch the four habits in action on one problem.
+
+\paragraph{Decomposition.} Big question (``is $n$ prime?'') into
+smaller yes/no questions: is it divisible by 2? by 3? by 4? \ldots\ If
+any answer is yes, $n$ is not prime; if all are no, it is prime.
+
+\paragraph{Pattern recognition.} Two useful observations:
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item We can stop the first time we see a divisor -- we don't need
+          to check the rest.
+    \item No factor of $n$ (other than $n$ itself) can exceed $n/2$,
+          so we never need to test past there. In fact, no factor
+          exceeds $\sqrt{n}$, which is a much tighter bound.
+\end{itemize}
+
+\paragraph{Algorithm.}
+\begin{verbatim}
+IsPrime(n):
+    if n < 2: return false
+    for d = 2 to sqrt(n):
+        if n mod d == 0: return false
+    return true
+\end{verbatim}
+
+\paragraph{Abstraction.} The algorithm doesn't depend on any specific
+value of $n$; it works for every positive integer. Expressed as a
+function it becomes a reusable tool.
+
+\begin{examplebox}[C++ translation]
+\begin{verbatim}
+#include <cmath>
+
+bool is_prime(int n) {
+    if (n < 2) return false;
+    int limit = static_cast<int>(std::sqrt(n));
+    for (int d = 2; d <= limit; ++d) {
+        if (n % d == 0) return false;
+    }
+    return true;
+}
+\end{verbatim}
+Three pattern-recognition wins compound here: stop at \texttt{sqrt(n)}
+instead of $n/2$, return as soon as a divisor is found, and handle the
+$n < 2$ edge case up front so the loop body doesn't have to.
+\end{examplebox}
+
+\begin{notebox}[Why $\sqrt{n}$ is enough]
+If $n = a \cdot b$ with $a \le b$, then $a \le \sqrt{n}$. So if $n$
+has any factor at all, it has one no bigger than $\sqrt{n}$. Checking
+past $\sqrt{n}$ is redundant. Turning a $O(n)$ primality check into
+$O(\sqrt{n})$ is not a rewrite; it's a single-line loop bound change
+that pattern-recognition hands you for free.
+\end{notebox}
+
+\subsection{Second example: sum of 1 to 100}
+
+\paragraph{Decomposition.} Add numbers one at a time:
+$1 + 2$, then $+ 3$, \ldots
+
+\paragraph{Pattern recognition.} Pair the numbers from the ends in:
+$(1 + 100), (2 + 99), (3 + 98), \ldots$ Each pair sums to 101, and
+there are 50 pairs. Total: $50 \cdot 101 = 5050$.
+
+\paragraph{Algorithm.} The closed-form $\dfrac{n(n+1)}{2}$ computes
+the sum in $O(1)$ rather than $O(n)$.
+
+\paragraph{Abstraction.} The formula works for any positive $n$, not
+just 100. It generalizes further to arithmetic sequences.
+
+\begin{examplebox}[Two implementations, same output]
+\begin{verbatim}
+// O(n) loop -- decomposition only
+int sum_loop(int n) {
+    int s = 0;
+    for (int i = 1; i <= n; ++i) s += i;
+    return s;
+}
+
+// O(1) closed form -- pattern recognition plus algebra
+int sum_formula(int n) {
+    return n * (n + 1) / 2;
+}
+\end{verbatim}
+For $n = 100$ both return 5050. For $n = 1{,}000{,}000{,}000$, only
+the second one finishes in microseconds.
+\end{examplebox}
+
+\begin{ideabox}[Pattern recognition is the most valuable habit]
+Of the four, pattern recognition is where the real leverage lives.
+Decomposition and algorithms are mechanical once the pattern is
+clear; abstraction is mostly cleanup. Spotting that ``this is a
+sum of pairs'' or ``this is a divisibility scan'' turns a tedious
+loop into a one-line expression, and recognizing ``this is binary
+search'' turns an $O(n)$ scan into $O(\log n)$. Invest in the
+vocabulary of named patterns -- this course is partly that vocabulary.
+\end{ideabox}
+
+\subsection{The loop from \textsection 2.2 revisited}
+
+The workflow from the previous section is computational thinking in
+practice:
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\textbf{Workflow step} & \textbf{CT concept} \\
+\hline
+Restate the problem & (prerequisite) \\
+Solve a tiny example by hand & decomposition \\
+Spot the structure & pattern recognition \\
+Write pseudocode & algorithm \\
+Generalize to a function & abstraction \\
+Estimate the cost & pattern recognition (again) \\
+Translate to C++ & implementation \\
+Test on the tiny example & verification \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{ideabox}[Big picture]
+Computational thinking is not a separate subject from programming; it
+is the shape of the thinking programming rewards. Every named
+algorithm in this course -- binary search, merge sort, Dijkstra, hash
+tables -- is someone's decomposition-plus-pattern-recognition written
+down and abstracted. The more of them you know, the less original
+design you need to do on any given problem: you recognize the shape,
+retrieve the matching algorithm, and translate it. That is what makes
+experienced engineers productive.
+\end{ideabox}
+
+\section{2.4 Recursive Definitions}
+
+A \textbf{recursive} algorithm solves a problem by reducing it to a
+\emph{smaller instance of the same problem} and combining the answer.
+It is the same mental move as mathematical induction, and it unlocks a
+surprising number of problems that are awkward to express with loops
+alone -- tree traversals, divide-and-conquer sorts, graph searches,
+backtracking puzzles. The entire back half of this course leans on it.
+
+\begin{defnbox}[Recursive algorithm]
+An algorithm is \textbf{recursive} if it solves a problem by (1)
+identifying one or more \textbf{base cases} that can be answered
+directly, and (2) reducing every other input to a \emph{smaller}
+instance of the same problem, calling itself on the smaller instance,
+and combining the result.
+\end{defnbox}
+
+\begin{defnbox}[Base case]
+The \textbf{base case} is the one (or few) input(s) that the algorithm
+answers without recursing. Every recursive algorithm needs at least
+one. Without it, the algorithm keeps reducing forever -- in code, the
+call stack grows until the program crashes.
+\end{defnbox}
+
+\begin{defnbox}[Recursive case]
+The \textbf{recursive case} is the work the algorithm does on a
+non-base input: reduce the problem, call itself on the smaller
+version, combine the returned answer with whatever local work
+remains.
+\end{defnbox}
+
+\subsection{The anatomy of every recursive function}
+
+\begin{examplebox}[The template]
+\begin{verbatim}
+ReturnType solve(Input x) {
+    if (is_base_case(x)) {
+        return direct_answer(x);        // base case
+    }
+    Input smaller = reduce(x);          // make progress
+    ReturnType sub = solve(smaller);    // recurse
+    return combine(x, sub);             // combine and return
+}
+\end{verbatim}
+Every recursive function you will write is some fill-in-the-blank
+version of this skeleton.
+\end{examplebox}
+
+\begin{defnbox}[SRTBOT: a fuller version of the template]
+The 3-part template above (\emph{base, reduce, combine}) is the
+core of recursive algorithm design. MIT 6.006 expands it into a
+6-step recipe -- mnemonic \textbf{SRTBOT} -- that adds the explicit
+checks the abbreviated template leaves implicit:
+
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item \textbf{S}ubproblem definition. State the meaning of a
+          subproblem in words, in terms of parameters. Often
+          subsets of input: prefixes, suffixes, contiguous
+          substrings.
+    \item \textbf{R}elate. Express the subproblem solution in terms
+          of smaller subproblems. The design pattern: \emph{identify
+          a question whose answer would reduce to smaller subproblems,
+          then locally brute-force all possible answers}.
+    \item \textbf{T}opological order. Argue the relation is
+          acyclic -- subproblems form a DAG -- so the recursion
+          terminates.
+    \item \textbf{B}ase cases. Solutions for the smallest
+          subproblems where the relation breaks down.
+    \item \textbf{O}riginal problem. Show how to compute the answer
+          to the original problem from subproblem solutions. Use
+          parent pointers to recover the actual solution, not just
+          the objective value.
+    \item \textbf{T}ime analysis. Sum work over subproblems
+          ($\sum_{x \in X} \text{work}(x)$, treating recursive
+          calls as $O(1)$).
+\end{enumerate}
+
+The 3-part template is the SRTBOT core: \emph{base} = step 4,
+\emph{reduce + combine} = step 2. SRTBOT pays off when you start
+writing dynamic-programming algorithms in \textsection 2.10, where
+the topological-order argument and the work-per-subproblem analysis
+become the actual content of the design.
+\end{defnbox}
+
+\subsection{Example 1: factorial}
+
+$n! = n \cdot (n-1) \cdot (n-2) \cdots 2 \cdot 1$, with $1! = 1$ as the
+base.
+
+\begin{examplebox}[Factorial in C++]
+\begin{verbatim}
+long long factorial(int n) {
+    if (n <= 1) return 1;             // base case
+    return n * factorial(n - 1);      // recursive case
+}
+\end{verbatim}
+Trace for $n = 4$:
+\begin{verbatim}
+factorial(4) = 4 * factorial(3)
+             = 4 * 3 * factorial(2)
+             = 4 * 3 * 2 * factorial(1)
+             = 4 * 3 * 2 * 1
+             = 24
+\end{verbatim}
+\end{examplebox}
+
+\begin{warnbox}[\texttt{n!} overflows 64-bit \texttt{long long} at $n = 21$]
+$20! \approx 2.4 \times 10^{18}$, just under the $\texttt{long long}$
+max. $21!$ silently wraps around to a nonsense value. For bigger
+inputs you need a big-integer type or modular arithmetic. This isn't
+a recursion bug -- iterative factorial has the same problem -- but
+students often think the recursive version ``broke'' when the
+arithmetic did.
+\end{warnbox}
+
+\subsection{Example 2: cumulative sum}
+
+Sum of $0 + 1 + 2 + \cdots + n$. Base case: sum to $0$ is $0$.
+
+\begin{examplebox}[\texttt{sum(n)}]
+\begin{verbatim}
+int cumulative_sum(int n) {
+    if (n == 0) return 0;
+    return n + cumulative_sum(n - 1);
+}
+\end{verbatim}
+$\texttt{sum}(4) = 4 + 3 + 2 + 1 + 0 = 10$.
+
+This is a great ``first recursion'' exercise, but the closed form
+$n(n+1)/2$ is O(1) and doesn't risk stack overflow. Recursion here is
+pedagogy, not the right tool.
+\end{examplebox}
+
+\subsection{Example 3: reverse a vector by swapping from both ends}
+
+A recursive rewrite of the reversal loop from \textsection 1.9.
+
+\begin{examplebox}[Reverse in place, recursively]
+\begin{verbatim}
+void reverse_list(std::vector<int>& v, int lo, int hi) {
+    if (lo >= hi) return;              // base: 0 or 1 element left
+    std::swap(v[lo], v[hi]);           // work at this layer
+    reverse_list(v, lo + 1, hi - 1);   // recurse on the inside
+}
+
+// Caller:
+reverse_list(v, 0, v.size() - 1);
+\end{verbatim}
+Compare to the loop in \textsection 1.9. The recursion mirrors the
+structural invariant directly: \emph{the outer layer is done; reverse
+the inner layer.} Some programmers find that clearer than the
+\texttt{v.size() / 2} loop bound.
+\end{examplebox}
+
+\subsection{What can go wrong}
+
+\begin{warnbox}[1. Missing or unreachable base case]
+\begin{verbatim}
+int factorial(int n) {
+    return n * factorial(n - 1);   // never stops
+}
+\end{verbatim}
+\texttt{factorial(0)} calls \texttt{factorial(-1)} calls
+\texttt{factorial(-2)} \ldots\ the program crashes with a stack
+overflow. Every recursive function needs a base case that's
+\emph{reachable} from every legal input.
+\end{warnbox}
+
+\begin{warnbox}[2. Recursing on the same or larger subproblem]
+\begin{verbatim}
+int f(int n) {
+    if (n == 0) return 0;
+    return f(n) + 1;              // same n -- infinite recursion
+}
+\end{verbatim}
+If the recursive call isn't on a \emph{strictly smaller} input (or
+strictly closer to the base case), recursion doesn't terminate. A
+useful habit: write down a \emph{measure} -- an integer that decreases
+on every call -- and confirm it reaches the base.
+\end{warnbox}
+
+\begin{warnbox}[3. Stack overflow on deep recursion]
+C++ call stacks are usually measured in megabytes; each stack frame
+is a few dozen to a few hundred bytes. That makes the practical
+recursion depth somewhere in the tens of thousands to millions of
+frames before the stack blows. For chains like \texttt{factorial(n)}
+or recursive sum this rarely matters, but for tree traversal on a
+badly-shaped tree -- or for code that recurses on linked list length
+-- you can hit it. Iteration or explicit stack data structures are
+the fixes.
+\end{warnbox}
+
+\begin{notebox}[Recursive strategies, classified by call-graph shape]
+A recursive call graph (vertex per call, directed edge $A \to B$ if
+$B$ calls $A$) must be acyclic for the recursion to terminate. The
+\emph{shape} of that DAG corresponds 1:1 with named algorithm-design
+strategies you'll meet in \textsection 2.5--\textsection 2.10:
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\textbf{Strategy} & \textbf{Call-graph shape} \\
+\hline
+Brute force                & Star (all calls at one level) \\
+Decrease \& conquer        & Chain (each call has one child) \\
+Divide \& conquer          & Tree (calls split, no overlap) \\
+Dynamic programming        & DAG (calls overlap; reuse via memo) \\
+Greedy / incremental       & Subgraph (only one path explored) \\
+\end{tabular}
+\normalsize
+\end{center}
+
+This is the unifying framing for the rest of the chapter.
+\textsection 2.5 binary search is decrease-and-conquer (chain);
+naive Fibonacci is divide-and-conquer with overlap (a tree that
+\emph{wants} to be a DAG); \textsection 2.10 DP is the corresponding
+DAG fix; \textsection 2.9 greedy commits to one branch instead of
+exploring the whole shape. When you can sketch the call graph for a
+small input, you can usually name the strategy by inspection.
+\end{notebox}
+
+\subsection{When to reach for recursion}
+
+\begin{ideabox}[Recursion shines on recursive structure]
+Some data has recursion baked in -- \textbf{trees} have subtrees,
+\textbf{lists} have tails, \textbf{grids} have sub-grids, \textbf{graph
+searches} explore neighbors whose structure is ``the same problem on
+a smaller set of nodes.'' When the data is recursive, recursive code
+is shorter and clearer than the iterative equivalent. When the data
+is linear and the work is constant-per-element, loops almost always
+win.
+\end{ideabox}
+
+\subsection{Recursion and induction -- the same idea}
+
+A correctness argument for recursion mirrors a proof by induction:
+
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item \textbf{Base case.} The base-case answer is correct by
+          direct inspection.
+    \item \textbf{Inductive step.} Assume the recursive call returns
+          the correct answer for the smaller input. Show that the
+          combine step produces the correct answer for the current
+          input.
+\end{enumerate}
+
+\begin{examplebox}[Correctness of \texttt{factorial}]
+Base: \texttt{factorial(1) == 1}, matching $1! = 1$. \\
+Step: Assume \texttt{factorial(n-1) == (n-1)!}. Then
+\texttt{n * factorial(n-1) == n * (n-1)! == n!}. By induction,
+\texttt{factorial(n)} is correct for all $n \ge 1$.
+\end{examplebox}
+
+\begin{ideabox}[Big picture]
+Recursion is worth the investment even when a loop would work,
+because half of the algorithms in the rest of this course are most
+naturally expressed recursively: binary search, merge sort, quicksort,
+tree traversal, DFS, backtracking, dynamic programming recurrences.
+Get comfortable with the three-part template (base, reduce, combine)
+and the induction-style correctness argument, and those algorithms
+stop feeling mysterious -- they are the same pattern applied to
+different kinds of ``smaller subproblem.''
+\end{ideabox}
+
+\section{2.5 Recursive Algorithms}
+
+\textsection 2.4 introduced the mechanics of recursion on small
+arithmetic examples. This section applies the same three-part template
+(base, reduce, combine) to two algorithms you will actually use:
+\textbf{Fibonacci} (a warning sign about naive recursion) and
+\textbf{binary search} (a textbook win for recursion). Read them side
+by side -- same shape, wildly different efficiency.
+
+\subsection{Fibonacci: the cautionary tale}
+
+\begin{defnbox}[Fibonacci sequence]
+$F_0 = 0$, $F_1 = 1$, and $F_n = F_{n-1} + F_{n-2}$ for $n \ge 2$. The
+sequence begins $0, 1, 1, 2, 3, 5, 8, 13, 21, 34, \ldots$
+\end{defnbox}
+
+The definition \emph{is} a recurrence, so the recursive implementation
+writes itself:
+
+\begin{examplebox}[Naive recursive Fibonacci]
+\begin{verbatim}
+long long fib(int n) {
+    if (n == 0) return 0;
+    if (n == 1) return 1;
+    return fib(n - 1) + fib(n - 2);
+}
+\end{verbatim}
+Base cases: $n = 0$ and $n = 1$. Recursive case: sum of two smaller
+subproblems.
+\end{examplebox}
+
+\begin{warnbox}[This function is catastrophically slow]
+\texttt{fib(50)} takes minutes. \texttt{fib(60)} won't finish today.
+The reason: \texttt{fib(n)} calls both \texttt{fib(n-1)} and
+\texttt{fib(n-2)}, which each call two more, and so on. The number of
+calls grows roughly like $\phi^n \approx 1.618^n$. The recursion tree
+has billions of nodes, almost all of them computing values you've
+already computed:
+\begin{verbatim}
+                fib(5)
+               /      \
+          fib(4)       fib(3)
+         /     \      /     \
+      fib(3)  fib(2) fib(2) fib(1)
+      ...
+\end{verbatim}
+\texttt{fib(3)} is computed twice, \texttt{fib(2)} three times,
+\texttt{fib(1)} five times. This is the canonical example of a
+\emph{correct} recursive algorithm that is \emph{unacceptably slow}.
+\end{warnbox}
+
+\begin{ideabox}[Two standard fixes]
+\textbf{Memoization:} remember each result the first time you compute
+it. Recursion plus a cache turns $O(\phi^n)$ into $O(n)$.
+
+\textbf{Iteration (bottom-up):} just build the sequence from the
+bottom in a loop -- no recursion, $O(n)$ time, $O(1)$ space.
+\begin{verbatim}
+long long fib_iter(int n) {
+    long long a = 0, b = 1;
+    for (int i = 0; i < n; ++i) {
+        long long next = a + b;
+        a = b;
+        b = next;
+    }
+    return a;
+}
+\end{verbatim}
+The \emph{shape} of the recurrence makes naive recursion tempting.
+Recognizing overlapping subproblems -- a job for pattern recognition
+(\textsection 2.3) -- tells you to cache or iterate instead.
+\end{ideabox}
+
+\begin{notebox}[This is a preview of dynamic programming]
+``Recursion with overlapping subproblems'' is the single-sentence
+definition of \textbf{dynamic programming}. Every DP problem is a
+recursive definition plus a cache (memoization) or a loop (tabulation).
+You will meet this idea formally later; the Fibonacci blow-up is
+where the need for it first becomes obvious.
+\end{notebox}
+
+\subsection{Binary search: the textbook win}
+
+Here recursion earns its keep. Binary search on a \emph{sorted} array
+finds a key in $O(\log n)$ comparisons -- dramatically faster than the
+linear $O(n)$ scan from \textsection 1.5.
+
+\begin{defnbox}[Binary search]
+To search a sorted array for a key: look at the middle element. If it
+equals the key, return. If the key is smaller, recurse on the left
+half; if larger, recurse on the right half. If the range becomes
+empty, the key is not present.
+\end{defnbox}
+
+\begin{examplebox}[Recursive binary search]
+\begin{verbatim}
+int binary_search(const std::vector<int>& a, int lo, int hi, int key) {
+    if (lo > hi) return -1;                          // base: empty range
+    int mid = lo + (hi - lo) / 2;                    // avoid overflow
+    if (a[mid] == key)  return mid;
+    if (a[mid] < key)   return binary_search(a, mid + 1, hi, key);
+    else                return binary_search(a, lo, mid - 1, key);
+}
+
+// Caller:
+int idx = binary_search(v, 0, v.size() - 1, 42);
+\end{verbatim}
+\end{examplebox}
+
+\begin{warnbox}[\texttt{mid = (lo + hi) / 2} is an overflow bug]
+If \texttt{lo + hi} exceeds \texttt{INT\_MAX}, the sum wraps negative
+and \texttt{mid} lands somewhere random. The fix is
+\texttt{mid = lo + (hi - lo) / 2}, which computes the same value
+without ever adding two large indices. This bug sat undiscovered in
+the JDK's \texttt{Arrays.binarySearch} for nearly a decade (Josh
+Bloch, 2006). Make the safe form muscle memory.
+\end{warnbox}
+
+\subsection{Tracing binary search on a concrete input}
+
+\begin{examplebox}[Search for 42 in {\normalfont (14, 26, 42, 59, 71, 88, 92)}]
+\begin{verbatim}
+bs(v, 0, 6, 42):   mid = 3,  v[3] = 59.  59 > 42  ->  search left
+bs(v, 0, 2, 42):   mid = 1,  v[1] = 26.  26 < 42  ->  search right
+bs(v, 2, 2, 42):   mid = 2,  v[2] = 42.  found. return 2
+\end{verbatim}
+Three comparisons to find the key in a 7-element list. A linear scan
+would also take 3 here, but scale the list to $10^9$ elements: linear
+is $\sim 10^9$ comparisons, binary is $\sim 30$. That's the
+exponential-vs-logarithmic gap.
+\end{examplebox}
+
+\begin{notebox}[Why $O(\log n)$]
+Each recursive call halves the remaining range. Starting from $n$
+elements, you reach a range of size 1 after $\log_2 n$ halvings. 7
+elements $\to$ $\log_2 7 \approx 3$ steps. $10^9$ elements $\to$ 30
+steps. Binary search is the archetypal divide-and-conquer algorithm.
+\end{notebox}
+
+\subsection{Preconditions and edge cases}
+
+\begin{warnbox}[The array MUST be sorted]
+Binary search on an unsorted array silently returns wrong answers,
+not an error. If the data isn't already sorted, either sort first
+(which costs $O(n \log n)$ and only pays off when you will search
+many times) or use linear search.
+\end{warnbox}
+
+\begin{warnbox}[The off-by-one on the recursive range]
+The recursive calls use \texttt{mid + 1} and \texttt{mid - 1}, not
+\texttt{mid}. Forgetting the $\pm 1$ leaves \texttt{mid} in the
+remaining range forever, and when \texttt{a[mid]} keeps failing to
+match, the recursion never terminates. This is exactly the ``make
+the subproblem strictly smaller'' rule from \textsection 2.4.
+\end{warnbox}
+
+\begin{notebox}[\texttt{std::binary\_search} and \texttt{std::lower\_bound}]
+The standard library already ships binary search, and the iterative
+version it uses is somewhat faster in practice:
+\begin{verbatim}
+#include <algorithm>
+bool found = std::binary_search(v.begin(), v.end(), key);
+
+auto it = std::lower_bound(v.begin(), v.end(), key);
+// it points to the first element >= key
+\end{verbatim}
+Use these in production code; write the recursion by hand to
+understand it.
+\end{notebox}
+
+\subsection{Side-by-side: when recursion helps and when it hurts}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+& \textbf{Fibonacci (naive)} & \textbf{Binary search} \\
+\hline
+Recursive calls per step & 2 & 1 \\
+Subproblem overlap & massive & none \\
+Time complexity & $O(\phi^n)$ & $O(\log n)$ \\
+Typical depth & $n$ & $\log n$ \\
+Stack risk at $n = 10^6$ & overflow long before & safe (depth $\sim 20$) \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{ideabox}[Big picture]
+Recursive definitions are free; efficient recursive algorithms are
+not. When the recursion tree has \emph{branching plus overlap}, you
+pay exponentially -- Fibonacci is the small-but-brutal example.
+When each call strictly shrinks the problem and doesn't duplicate
+work, recursion is often the clearest possible code -- binary search
+is the archetype. A useful habit when writing a recursive function:
+sketch the call tree for a small input. If the tree is a single
+chain or a balanced split, the algorithm is fine. If you see the
+same subproblem appearing on multiple branches, stop and think about
+memoization or a loop before writing code.
+\end{ideabox}
+
+\section{2.6 Data Privacy}
+
+This section interrupts the algorithms thread to cover professional
+ethics -- specifically, how a working developer should think about
+confidential data. The material is short on C++ but the habits it
+teaches show up in every real job: which data you collect, where you
+store it, who can see it, and how to reason about the tradeoffs when
+those choices conflict.
+
+\begin{defnbox}[Confidential data]
+\textbf{Confidential data} is any data whose exposure could harm the
+people or organization it describes -- names, home addresses, Social
+Security numbers, health records, passwords, financial records,
+written communications, location history. The baseline assumption
+must be that unauthorized people will at some point try (or
+accidentally manage) to see it.
+\end{defnbox}
+
+\begin{defnbox}[Data breach]
+A \textbf{data breach} is any incident in which confidential data is
+exposed to an unauthorized party -- by external attack, insider
+misuse, accidental disclosure, physical theft, or lost hardware.
+Breaches are rarely caused by a single dramatic failure; they're the
+compounding effect of many small lapses.
+\end{defnbox}
+
+\subsection{``Alertness'' as a professional habit}
+
+The textbook framing borrows a line from safety engineering: the worst
+failures are the ones a little alertness would have prevented. For a
+developer, ``alertness'' translates to a handful of reflexes:
+
+\begin{itemize}[leftmargin=*]
+    \item Before writing code that collects a piece of data, ask
+          whether it's actually needed.
+    \item Before sending a file, email, or dataset, ask who else sees
+          it along the way.
+    \item Before stepping away from a laptop with sensitive data open,
+          lock the screen.
+    \item Before committing, check for credentials, keys, or customer
+          data in the diff.
+\end{itemize}
+
+None of these are technical. All of them are prevented by a quick
+pause, and none of them take a second when they become habit.
+
+\subsection{The Company XYZ scenario (and how it should have gone)}
+
+The textbook scenario: a data analyst is hired to do a confidential
+job-satisfaction survey. Data collected: name, home address,
+supervisor, free-form criticism. Data stored: an unencrypted Excel
+spreadsheet on a laptop left unlocked in a break room. Data leaked:
+the spreadsheet, forwarded by an admin who saw it open. Fallout:
+harassment, lawsuit, resignations.
+
+\begin{examplebox}[Four separate failures, any one of which would have prevented it]
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Collected too much.} Home address wasn't needed for
+          ``satisfaction correlated with commute'' -- ZIP code or
+          commute-time bucket would have worked.
+    \item \textbf{Stored it identified.} Responses could have been
+          anonymized at intake (swap name for a random ID, discard the
+          mapping after collection closes).
+    \item \textbf{Stored it in the clear.} The file should have been
+          encrypted at rest and protected by a strong password.
+    \item \textbf{Left the device unlocked.} A password-locked screen
+          and a full-disk-encrypted laptop would have kept the casual
+          snooper out.
+\end{itemize}
+Each of these is minutes of work. Together they turn a career-ending
+breach into a non-event.
+\end{examplebox}
+
+\subsection{The two levers: collection and release}
+
+\begin{defnbox}[Minimize collection risk]
+Collect the \emph{least} data that answers the question. If a
+summary suffices, collect the summary. If an anonymous identifier
+suffices, don't collect the name. Data that was never collected
+cannot leak.
+\end{defnbox}
+
+\begin{defnbox}[Minimize release risk]
+Treat every piece of collected data as if it will eventually be
+exposed. Encrypt at rest, lock access behind authentication, partition
+storage so a single breach doesn't expose everything, and delete data
+when it's no longer needed.
+\end{defnbox}
+
+\begin{notebox}[The eBay and Target breaches show the second principle at work -- partially]
+eBay's 2014 breach exposed names, addresses, birth dates, and
+encrypted passwords \emph{because financial data was stored
+separately} and therefore did not leak with the rest. Target's 2013
+breach did include credit-card numbers because the same segmentation
+was not in place. Same kind of attack; different architectural
+decisions about what data lives where; very different outcomes.
+\end{notebox}
+
+\subsection{The tradeoffs are real}
+
+There is no zero-risk data practice. Every privacy protection costs
+something -- inconvenience, reduced analytic power, slower development
+velocity -- and the job is to \emph{consciously} balance cost against
+risk.
+
+\begin{center}
+\small
+\begin{tabular}{p{4.8cm} p{7.2cm}}
+\textbf{Precaution} & \textbf{Tradeoff} \\
+\hline
+Drop identifying fields & Lose some analyses (commute distance,
+per-supervisor complaint patterns). \\
+Encrypt the file & Extra step every time you open it; password must
+be remembered and rotated. \\
+Collect fewer responses & Smaller sample, less statistical power. \\
+Refuse to share a dataset & Slows collaboration; may block a
+legitimate use. \\
+Retain data longer & More value for longitudinal analysis, more
+exposure if breached. \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{ideabox}[A four-question checklist]
+Before collecting, storing, or sharing anything sensitive:
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item \textbf{Is this analysis worth the exposure risk if this
+          data leaks?}
+    \item \textbf{Can I avoid collecting (or can I anonymize) the
+          sensitive fields?}
+    \item \textbf{Is this data protected at rest} -- encryption,
+          access control, locked device?
+    \item \textbf{If someone else wants this data, do they
+          \emph{need} it -- or would a summary suffice?}
+\end{enumerate}
+These four questions catch most breaches before they happen.
+\end{ideabox}
+
+\subsection{A short history of things that went wrong}
+
+The scale of real breaches is hard to picture:
+
+\begin{center}
+\small
+\begin{tabular}{p{2.2cm} p{9.8cm}}
+\hline
+\textbf{2013, Target} & 70M+ customer records including credit-card
+data; stemmed from a compromised HVAC vendor login. \\
+\textbf{2013, Snowden / NSA} & Thousands of classified documents
+leaked by an insider with legitimate access. \\
+\textbf{2014, eBay} & 148M accounts; passwords encrypted but email
+and address in the clear. \\
+\textbf{2014, Sony Pictures} & Terabytes including emails, salaries,
+and HR data; a senior executive lost their job over quoted emails. \\
+\textbf{2015, Anthem} & 80M records including SSNs and health info. \\
+\textbf{2015, Ashley Madison} & 30M user identities of a service
+whose entire value was discretion; several suicides attributed in
+part to the exposure. \\
+\textbf{2017, Equifax} & 147M Americans' SSNs and credit data; root
+cause a known Apache Struts vulnerability left unpatched. \\
+\textbf{2021, Facebook} & 533M user records including phone numbers
+scraped via a contact-import misuse. \\
+\hline
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{notebox}[The pattern in every row]
+Large, well-resourced companies with security teams still got
+breached. The common thread isn't ``they were incompetent'' -- it's
+that attack surface is huge, humans make small mistakes, and modern
+datasets are valuable enough that attackers are patient. Assuming
+breach is the default working assumption; the question is how much
+damage a breach would do, not whether one will ever happen.
+\end{notebox}
+
+\subsection{What this means for you on CS 300 and beyond}
+
+Course projects rarely handle real PII, but the habits are worth
+forming now:
+
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Don't commit credentials, API keys, or \texttt{.env} files
+          to git. Add them to \texttt{.gitignore} before you run your
+          first \texttt{git add}.
+    \item Use environment variables or a secrets manager for
+          API tokens -- never string literals in source.
+    \item When a program reads user data, think about where it lives
+          after the program exits: in memory? in a temp file? in a
+          log?
+    \item Treat student test data with the same care you would real
+          data, so the habits hold when the data does matter.
+\end{itemize}
+
+\begin{ideabox}[Big picture]
+Every algorithm in this course is a \emph{means}, and data is what
+the algorithms operate on. Efficiency and correctness are necessary
+but not sufficient -- correctness on the wrong data, efficiency at
+the wrong scope, or a correct analysis leaked to the wrong audience
+can all cause real harm. Professional responsibility isn't a separate
+subject from engineering; it's the part of engineering that keeps
+your correct code from becoming a liability.
+\end{ideabox}
+
+\section{2.7 Ethical Guidelines}
+
+\textsection 2.6 covered the narrow question of keeping confidential
+data confidential. This section widens the frame: once you have data
+and are doing something with it, what obligations come with the work?
+The textbook reaches for the American Statistical Association's
+\textbf{Ethical Guidelines for Statistical Practice}, which is a good
+reference point even though CS 300 is not a statistics course --
+every engineer who ships a system that affects people is doing applied
+statistics whether they call it that or not.
+
+\begin{defnbox}[Ethics (working definition)]
+\textbf{Ethics} are the principles that guide decisions about what is
+good for individuals and society. Professional ethics are the
+specific rules a field commits to so that its members can be trusted
+to do their work responsibly -- analogous to the Hippocratic oath in
+medicine or a building code in civil engineering.
+\end{defnbox}
+
+\begin{defnbox}[Data analytics]
+The practice of examining data to draw conclusions, build models, or
+inform decisions. Results are often used by people who did not
+perform the analysis and cannot independently verify it, which is
+why transparency and integrity matter so much.
+\end{defnbox}
+
+\subsection{The one-line summary}
+
+The ASA opens its guidelines with a sentence worth memorizing:
+\begin{quote}
+Good statistical practice is fundamentally based on \textbf{transparent
+assumptions}, \textbf{reproducible results}, and \textbf{valid
+interpretations}.
+\end{quote}
+
+Those three phrases are the compressed form of everything that
+follows. When a result looks impressive, ask: were the assumptions
+stated? can someone else reproduce it? does the interpretation
+actually follow from the numbers?
+
+\subsection{The five categories}
+
+The ASA guidelines organize obligations into five buckets. Roughly:
+what you owe your work, your data, your audience, your subjects, and
+your field.
+
+\paragraph{1. Professional integrity and accountability.}
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Pick the sampling and analytic approach that actually
+          answers the question, not the one that gives the answer
+          you wanted.
+    \item Identify and reduce sources of bias. Disclose what you
+          can't eliminate.
+    \item Disclose conflicts of interest -- financial, political, or
+          otherwise. Readers get to discount your work accordingly.
+\end{itemize}
+
+\paragraph{2. Integrity of data and methods.}
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Document what you did. Not ``document in principle'' -- the
+          preprocessing, the filters, the parameters, the cutoffs.
+    \item Report results truthfully, including the uncertainty.
+          ``Our model is 94\% accurate'' is meaningless without a
+          confidence interval, a baseline, and the data it was
+          measured on.
+    \item Share data and code when you can, redacting or aggregating
+          to preserve privacy when you can't.
+\end{itemize}
+
+\paragraph{3. Responsibilities to the public and/or client.}
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Explain the tradeoffs of the approach you chose, including
+          what it cannot tell them.
+    \item Make useful knowledge broadly available when it doesn't
+          compromise privacy or legitimate confidentiality.
+\end{itemize}
+
+\paragraph{4. Responsibilities to research subjects.}
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Stay current on best practices for protecting the people
+          whose data you hold.
+    \item Protect privacy and confidentiality of subjects even when
+          doing so costs you analytic power.
+\end{itemize}
+
+\paragraph{5. Allegations of misconduct.}
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Don't condone -- or cover for -- bad practice by
+          colleagues.
+    \item Distinguish honest error and genuine disagreement from
+          misconduct. They look similar and are judged very
+          differently.
+    \item Don't retaliate against whistleblowers.
+\end{itemize}
+
+\subsection{Connecting the categories to CS 300 work}
+
+``Statistical practice'' sounds distant from a sophomore algorithms
+class. It shouldn't. A few concrete mappings:
+
+\begin{center}
+\small
+\begin{tabular}{p{5cm} p{7cm}}
+\textbf{Guideline} & \textbf{What it looks like in CS 300 / future work} \\
+\hline
+Transparent assumptions & Document your time complexity, your input
+size assumptions, and what ``works'' means (average? worst case?
+specific distribution?). \\
+Reproducible results & Fixed random seeds in tests, deterministic
+hash-table iteration, version-pinned dependencies. \\
+Valid interpretation & ``Sort X finished 2$\times$ faster'' is a
+claim about the specific input, machine, and compiler flags --
+not a universal truth. \\
+Disclose conflicts & If you generated your test data with the same
+code you're benchmarking, say so. \\
+Protect subjects & Don't commit student records, user IDs, or real
+customer data to your course repo. \\
+Don't retaliate, don't condone & If a teammate ships a function
+that rounds metric values ``to look better,'' call it out in
+review. \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\subsection{The classic ways analyses go bad}
+
+Unethical analysis often doesn't look like fraud -- it looks like a
+slightly wrong choice at each of five steps that compound into a
+misleading conclusion.
+
+\begin{warnbox}[\emph{p}-hacking / selective reporting]
+Running many analyses and reporting only the ones that came out
+``interesting.'' The reported result looks significant; the
+underlying process was essentially random. Pre-register the analysis
+you intend to run before you look at the data, and report all runs,
+not just the one that worked.
+\end{warnbox}
+
+\begin{warnbox}[Cherry-picked baselines and time windows]
+``Model X improved accuracy 20\%'' -- compared to what, and over
+which time window? Picking the weakest baseline or the favorable
+date range can make an unchanged algorithm look transformative. The
+mitigation is always to report the alternatives you considered and
+why you chose this one.
+\end{warnbox}
+
+\begin{warnbox}[Disclosing conclusions, hiding methods]
+A result that cannot be reproduced is not a result. If a paper,
+blog post, or dashboard gives you a number without enough detail to
+recompute it, treat the number as a claim, not evidence.
+\end{warnbox}
+
+\begin{warnbox}[Proxy variables for protected attributes]
+A model that doesn't take race/gender/etc.\ as an input but uses ZIP
+code, first name, or browsing history can reproduce discrimination
+with a clean deniability story. The ethical question is not what
+features you included but what outcomes the system produces across
+groups.
+\end{warnbox}
+
+\subsection{A short CS 300 reproducibility checklist}
+
+Even in course projects, form the habits now:
+
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Seed} any randomness you use in benchmarks or tests.
+    \item \textbf{Record} compiler, flags, CPU, and input size alongside
+          every performance number.
+    \item \textbf{Version} the dataset. ``The bids.csv we were given''
+          is not enough -- keep a hash or a dated copy.
+    \item \textbf{Rerun} the whole pipeline from scratch occasionally
+          to make sure it still produces the reported results.
+    \item \textbf{Commit} the analysis code next to the numbers it
+          produced, not separately.
+\end{itemize}
+
+\begin{ideabox}[Big picture]
+Ethical practice is not a separate module bolted onto ``the real
+work.'' The three pillars -- transparent assumptions, reproducible
+results, valid interpretations -- are the same hygiene that makes
+engineering teams productive: code you can rerun, tests you can
+trust, and claims that survive scrutiny. A benchmark nobody else
+can reproduce is closer to marketing than to engineering; a model
+whose behavior across subgroups nobody bothered to check is a bug
+waiting to surface. Treat ethics as a quality bar you hold your own
+work to, and the ASA guidelines stop feeling like an outside
+constraint and start feeling like the definition of ``done.''
+\end{ideabox}
+
+\section{2.8 Heuristics}
+
+\textsection 2.1 ended on a note: some problems (the NP-complete ones)
+have no known efficient exact algorithm. What do you do when you still
+have to ship? You use a \textbf{heuristic} -- an algorithm that
+deliberately trades optimality for speed or simplicity. Heuristics
+are everywhere in production code: route planners, ranking systems,
+allocators, schedulers, compilers, game AI. When the exact answer is
+too expensive to compute, a provably-pretty-good answer in a
+reasonable amount of time is the whole game.
+
+\begin{defnbox}[Heuristic]
+A \textbf{heuristic} is a technique that willingly accepts a
+non-optimal or approximate solution in order to improve execution
+speed, simplicity, or memory use. A heuristic is not a
+``wrong'' algorithm -- it's a conscious tradeoff. The tradeoff is the
+point.
+\end{defnbox}
+
+\begin{defnbox}[Heuristic algorithm]
+An algorithm whose design is driven by a heuristic. It typically runs
+much faster than an optimal algorithm on the same problem, and
+typically returns a solution that is \emph{close to} optimal most of
+the time -- with no guarantee, or a weaker guarantee, of hitting the
+best possible answer.
+\end{defnbox}
+
+\subsection{The knapsack problem: the canonical example}
+
+\begin{defnbox}[0-1 knapsack problem]
+Given a knapsack with maximum weight capacity $W$ and a list of
+items, each with a weight $w_i$ and a value $v_i$, choose a subset of
+items (each included at most once -- hence \textbf{0-1}) whose total
+weight is $\le W$ and whose total value is as large as possible.
+\end{defnbox}
+
+\begin{notebox}[Why this is hard]
+With $n$ items, there are $2^n$ possible subsets. Checking all of
+them is exact but exponential. 30 items is already $2^{30}
+\approx 10^9$ combinations; 50 items is $10^{15}$. This is the
+textbook example of ``correct algorithm exists, but good luck
+running it.'' 0-1 knapsack is NP-hard; no polynomial-time exact
+algorithm is known.
+\end{notebox}
+
+\subsection{A greedy heuristic for knapsack}
+
+\begin{examplebox}[Greedy by value]
+\begin{verbatim}
+Knapsack01_greedy(items, capacity):
+    Sort items in descending order of value
+    remaining = capacity
+    chosen = empty list
+    for each item in sorted order:
+        if item.weight <= remaining:
+            add item to chosen
+            remaining -= item.weight
+    return chosen
+\end{verbatim}
+Take the highest-value item that still fits; keep going until nothing
+else fits. One pass, plus the sort: $O(n \log n)$ total.
+\end{examplebox}
+
+\begin{warnbox}[This is fast, and sometimes wrong]
+\textbf{Capacity 20, items:}
+\begin{center}
+\begin{tabular}{lll}
+Item & Weight & Value \\
+\hline
+A & 15 & \$95 \\
+B & 12 & \$60 \\
+C & \phantom{0}8 & \$42 \\
+\end{tabular}
+\end{center}
+Greedy picks A (\$95, remaining capacity 5) and then nothing else
+fits. Total: \$95. The optimal answer picks B + C: weight 20, value
+\$102. The heuristic missed the best answer by choosing the
+tempting-looking big-ticket item early.
+\end{warnbox}
+
+\begin{ideabox}[Smarter greedy: value per pound]
+Sorting by \emph{value/weight ratio} instead of raw value usually
+does better, because it packs the knapsack more densely. It still
+isn't optimal on every instance -- the same pathological example
+can be constructed against any simple greedy rule -- but on random
+instances it's typically within a few percent of optimal. Choosing
+the right heuristic measure is half the design work.
+\end{ideabox}
+
+\begin{notebox}[The other two options: DP and branch-and-bound]
+If all weights are integers and $W$ is not too large, 0-1 knapsack
+can be solved \emph{exactly} in $O(n \cdot W)$ time with dynamic
+programming. For large $W$ or continuous weights, branch-and-bound
+prunes the exponential search tree but retains the correct answer.
+The full story of ``when to use heuristic vs.\ DP vs.\
+branch-and-bound'' is beyond this section, but knowing that all
+three exist helps you reach for the right tool.
+\end{notebox}
+
+\begin{notebox}[``DP solves knapsack'' is true -- but only \emph{pseudopolynomially}]
+The line above says 0-1 knapsack can be solved in $O(n \cdot W)$
+time with DP, which sounds polynomial. It's not -- not in the sense
+algorithm theorists mean.
+
+\textbf{Strongly polynomial} time is bounded by a constant-degree
+polynomial in input size measured \emph{in words}. Knapsack's input
+is $n$ items plus the integer $W$ -- so input size is $O(n)$ words.
+But $W$ itself is one of those words: it can be as large as $2^w$
+where $w$ is the word size. So $O(n \cdot W)$ can be $O(n \cdot 2^w)$
+-- exponential in input \emph{bits}.
+
+This is called \textbf{pseudopolynomial}: bounded by a polynomial in
+input size \emph{and} input integer values. Pseudopolynomial
+algorithms are polynomial only when the integers are polynomially
+bounded in input size ($n^{O(1)}$). For knapsack with $W = 2^{60}$,
+$O(n \cdot W)$ is hopeless.
+
+So 0-1 knapsack remains NP-hard -- the DP doesn't actually break
+the hardness. The DP is useful when $W$ is small (a few thousand,
+say), but fundamentally the difficulty sits in the \emph{values} of
+the integers, not their count. Subset Sum has the same character
+(same DP, $O(n \cdot T)$, pseudopolynomial in target $T$). Chapter~3
+returns to the strongly-polynomial-vs-pseudopolynomial-vs-exponential
+hierarchy when it formalizes Big-O.
+\end{notebox}
+
+\subsection{Self-adjusting heuristics}
+
+A different flavor of heuristic: instead of approximating an answer,
+the algorithm \emph{reorganizes its data structure over time} based
+on how it's being used, so common operations get faster.
+
+\begin{defnbox}[Self-adjusting heuristic]
+A heuristic that modifies a data structure in response to observed
+access patterns. The structure starts in some default arrangement and
+evolves to match the workload. Splay trees, AVL rotations, LRU caches,
+move-to-front lists, and adaptive B-trees are all examples.
+\end{defnbox}
+
+\subsection{Worked example: move-to-front on a linear search}
+
+\begin{examplebox}[Move-to-front]
+Start with a list: \texttt{[17, 5, 88, 3, 42, 91, 76, 64]}.
+
+Search for 42: linear scan takes 5 comparisons. After the search,
+\emph{move 42 to the front}.
+
+List is now: \texttt{[42, 17, 5, 88, 3, 91, 76, 64]}.
+
+Search for 42 again: 1 comparison.
+
+Search for 64: 8 comparisons, then move 64 to the front.
+
+List: \texttt{[64, 42, 17, 5, 88, 3, 91, 76]}.
+
+Search for 42: 2 comparisons.
+\end{examplebox}
+
+\begin{ideabox}[Why it works]
+Real-world access patterns are rarely uniform. A small number of
+items are hot, most are cold. Move-to-front drifts the hot items
+toward the front of the list, where they're cheap to find. On a
+skewed workload -- think the handful of popular queries in a search
+engine, or the same test scores being looked up hundreds of times --
+this can make an $O(n)$ linear search effectively $O(1)$ amortized.
+
+On a \emph{uniform} workload, move-to-front still works, it just
+doesn't help much. That's the right kind of tradeoff: it never
+makes access slower (per operation the list still takes $O(n)$
+worst case) and it makes the common case much faster when the
+common case exists.
+\end{ideabox}
+
+\begin{warnbox}[Move-to-front is not a substitute for the right data structure]
+If the list is big and the workload isn't heavily skewed, a hash
+table (\textsection later in course) is $O(1)$ average regardless
+of the access pattern and you should use one. Move-to-front is a
+nice $O(1)$-amortized tweak when a linked list is already the right
+structure for other reasons.
+\end{warnbox}
+
+\subsection{When to reach for a heuristic (and when not to)}
+
+\begin{center}
+\small
+\begin{tabular}{p{5.2cm} p{7cm}}
+\textbf{Reach for a heuristic when} & \textbf{Use the exact algorithm when} \\
+\hline
+The problem is NP-hard and inputs are large. & The problem has a
+polynomial-time exact algorithm (most of this course). \\
+``Pretty good, fast'' is more valuable than ``optimal, slow.'' &
+Optimality is required by the spec (safety, financial, legal). \\
+You can measure how close the heuristic gets to optimal and it's
+good enough. & You can't measure closeness and a bad answer has
+real consequences. \\
+The algorithm will run on streaming / online data where you can't
+see the whole input. & The input is fully available and small
+enough to process exactly. \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{ideabox}[Big picture]
+Heuristics are not a failure of computer science -- they are one of
+its honest responses to the real world. Some problems are too big to
+solve optimally; others arrive as a stream where you have to commit
+before seeing everything; many data structures get dramatically
+faster when allowed to reshape themselves around actual usage. The
+habit of mind to build here is: \emph{ask what ``good enough'' means
+for this problem, pick a heuristic whose failure modes you
+understand, and measure how close to optimal it gets in practice.}
+That framing will serve you long after the specific greedy-knapsack
+or move-to-front trick stops mattering.
+\end{ideabox}
+
+\section{2.9 Greedy Algorithms}
+
+\textsection 2.8 introduced heuristics -- the idea of accepting
+non-optimal answers for speed. A \textbf{greedy algorithm} is the most
+common style of heuristic: at each step, commit to the choice that
+looks best \emph{right now}, without looking ahead. Sometimes this
+lands you at the globally optimal answer (change-making,
+fractional-knapsack, activity selection, shortest paths). Sometimes
+it doesn't (0-1 knapsack from \textsection 2.8). Knowing which
+problems are in the first bucket and which aren't is the real skill.
+
+\begin{defnbox}[Greedy algorithm]
+A \textbf{greedy algorithm} solves a problem by repeatedly making the
+\emph{locally optimal} choice -- the option that looks best at this
+step -- and never reconsidering. It does not backtrack, cache
+alternatives, or look ahead. The algorithm terminates when no further
+choice is possible or the goal has been reached.
+\end{defnbox}
+
+\begin{defnbox}[Locally optimal vs. globally optimal]
+A \textbf{locally optimal} choice is the best move at a single step
+considered in isolation. A \textbf{globally optimal} solution is the
+best overall outcome across all steps. Greedy algorithms make locally
+optimal choices and \emph{hope} those add up to a global optimum.
+Whether they do depends on the problem.
+\end{defnbox}
+
+\subsection{Example 1: making change (and why US coins are special)}
+
+\begin{examplebox}[\texttt{MakeChange} with US denominations]
+\begin{verbatim}
+MakeChange(amount):
+    while amount >= 25: take a quarter; amount -= 25
+    while amount >= 10: take a dime;    amount -= 10
+    while amount >= 5:  take a nickel;  amount -= 5
+    while amount >= 1:  take a penny;   amount -= 1
+\end{verbatim}
+For 91 cents: 3 quarters (75), 1 dime (85), 1 nickel (90), 1 penny
+(91). Total: 6 coins. That also happens to be the fewest coins
+possible.
+\end{examplebox}
+
+\begin{warnbox}[Greedy change-making is NOT always optimal]
+It works for US coins -- 1, 5, 10, 25 -- because the denomination set
+has a property called \emph{matroid-compatibility}; for every amount,
+grabbing the largest coin that fits is part of some optimal solution.
+
+Change the denominations and greedy breaks. Example: coins
+\{1, 3, 4\}, target 6. Greedy takes 4, then 1, then 1 -- three coins.
+The optimal is 3 + 3 -- two coins. Same algorithm, different coin
+set, different answer.
+
+The exact-optimal solution for arbitrary denominations is dynamic
+programming, $O(n \cdot A)$ in the amount $A$.
+\end{warnbox}
+
+\subsection{Example 2: fractional knapsack -- greedy is optimal}
+
+\begin{defnbox}[Fractional knapsack]
+The knapsack problem, but you may take any fraction $f \in [0, 1]$
+of any item. Its weight contribution is $f \cdot w_i$ and its value
+contribution is $f \cdot v_i$.
+\end{defnbox}
+
+\begin{examplebox}[Greedy by value-per-pound]
+\begin{verbatim}
+FractionalKnapsack(items, capacity):
+    Sort items descending by (value / weight)
+    remaining = capacity
+    for each item in sorted order:
+        if item.weight <= remaining:
+            take all of item
+            remaining -= item.weight
+        else:
+            take fraction = remaining / item.weight of item
+            remaining = 0
+            break
+\end{verbatim}
+This is \textbf{provably optimal}. Intuition: at every pound of
+knapsack space, you prefer the item with the highest
+dollars-per-pound. Allowing fractions means you can always
+\emph{fill} the knapsack, so ``best value density packed first'' wins.
+0-1 knapsack lacks this property because you're forced into an
+all-or-nothing choice at the last item.
+\end{examplebox}
+
+\begin{ideabox}[The difference between 0-1 and fractional]
+Same items, same capacity, same greedy rule -- but on 0-1 the greedy
+can leave optimal value on the table (see \textsection 2.8), while on
+fractional it can't. The lesson: a greedy rule's correctness depends
+on the problem structure, not just the rule. Always ask ``is this
+problem one where greedy is known to be optimal?'' before shipping
+code.
+\end{ideabox}
+
+\subsection{Example 3: activity selection -- and why ``earliest finish'' wins}
+
+\begin{defnbox}[Activity selection problem]
+Given activities each with a start time and a finish time, pick the
+largest subset of activities such that no two chosen activities
+overlap. Equivalent to scheduling the maximum number of compatible
+meetings on a single room.
+\end{defnbox}
+
+\begin{examplebox}[Greedy by earliest finish]
+\begin{verbatim}
+ActivitySelection(A):
+    Sort A ascending by finish time
+    chosen = [A[0]]
+    current_end = A[0].finish
+    for i from 1 to n-1:
+        if A[i].start >= current_end:
+            chosen.append(A[i])
+            current_end = A[i].finish
+    return chosen
+\end{verbatim}
+\end{examplebox}
+
+\begin{notebox}[Why earliest finish, not shortest or earliest start]
+Picking the shortest activity fails: a 10-minute activity that spans
+lunch blocks both morning and afternoon longer ones. Picking the
+earliest start fails for the same reason -- a 9am-to-5pm activity
+beats out everything. \textbf{Earliest finish} leaves the maximum
+remaining room in the day for further choices, which is exactly what
+greedy needs to stay on track.
+\end{notebox}
+
+\begin{examplebox}[A vacation day worked by hand]
+Activities: museum (9--11), hike (10--12), boat (11--13), hang-glide
+(14--15), fireworks (19--20), nightclub (18--23).
+
+Sorted by finish: museum, hike, boat, hang-glide, fireworks,
+nightclub.
+
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item Choose museum (finishes 11).
+    \item Hike starts 10 < 11, skip.
+    \item Boat starts 11 $\ge$ 11, choose (finishes 13).
+    \item Hang-glide starts 14 $\ge$ 13, choose (finishes 15).
+    \item Fireworks starts 19 $\ge$ 15, choose (finishes 20).
+    \item Nightclub starts 18 < 20, skip.
+\end{itemize}
+Chosen: museum, boat, hang-glide, fireworks. That's 4 activities,
+which is the maximum possible.
+\end{examplebox}
+
+\begin{examplebox}[Why earliest-finish is optimal: a sketch]
+Activity selection is one of the few greedy algorithms with a
+clean, short correctness proof. The 2-step template from above made
+concrete:
+
+\textbf{Greedy-choice property.} Some optimal solution includes the
+activity with the earliest finish time. \emph{Why:} let
+$\mathcal{O}$ be any optimal schedule, and let $a^*$ be the
+earliest-finish activity overall (call its finish time $f^*$). If
+$a^* \in \mathcal{O}$, done. Otherwise let $a' \in \mathcal{O}$ be
+the activity in $\mathcal{O}$ with the earliest finish time. Since
+$a^*$ has the globally earliest finish, $f^* \le f(a')$. Swap $a'$
+out and $a^*$ in: the rest of $\mathcal{O}$ all started \emph{after}
+$f(a') \ge f^*$, so they're still compatible with $a^*$. The new
+schedule has the same number of activities, includes $a^*$, and is
+also optimal. This is an \textbf{exchange argument} -- the standard
+shape of a greedy-choice proof.
+
+\textbf{Optimal substructure.} After picking $a^*$, the remaining
+problem is: pick the most activities from those that start at or
+after $f^*$. That subproblem has the same shape as the original
+(still an activity-selection problem, on a smaller set). Combining
+the greedy choice $a^*$ with an optimal solution to the remaining
+subproblem gives an optimal solution to the whole.
+
+\textbf{Putting them together.} Greedy-choice says picking $a^*$
+loses nothing. Optimal substructure says we can recurse on the
+remaining problem with the same algorithm. By induction on input
+size, the algorithm produces an optimal schedule.
+
+This is the entire shape of every greedy-correctness proof you
+will write: an exchange argument for greedy-choice, plus a
+same-shape argument for optimal substructure. Compare to the longer
+DP proofs in \textsection 2.10 -- greedy is simpler when it
+applies, and that simplicity is exactly why we look for
+greedy-friendly structure first.
+\end{examplebox}
+
+\subsection{When greedy actually works}
+
+There is a pattern behind these examples. Greedy is provably optimal
+on problems with one of two underlying structures:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Matroid structure.} Fancy name, simple idea: if the
+          locally optimal choice is always part of \emph{some}
+          globally optimal solution, and ``independent subsets'' have
+          an exchange property. Change-making with US coins,
+          minimum-spanning-tree (Kruskal, Prim, later in course), and
+          various scheduling problems have it.
+    \item \textbf{Greedy-choice property $+$ optimal substructure.}
+          Same two ingredients that justify dynamic programming,
+          minus the need to enumerate every subproblem. Activity
+          selection fits here.
+\end{itemize}
+
+\begin{ideabox}[Two moves of a correctness argument]
+To argue a greedy algorithm is optimal you usually show:
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item \textbf{Greedy-choice property.} There exists an optimal
+          solution that begins with the greedy choice. (``Swapping in
+          the greedy item doesn't hurt.'')
+    \item \textbf{Optimal substructure.} After making the greedy
+          choice, the remaining problem has the same shape, and its
+          optimal solution can be extended to a global optimum.
+\end{enumerate}
+Neither condition is obvious to verify; proving greedy correctness
+is genuinely harder than writing the algorithm.
+\end{ideabox}
+
+\subsection{Greedy vs. other strategies}
+
+\begin{center}
+\small
+\begin{tabular}{p{3.4cm} p{4cm} p{4.6cm}}
+\textbf{Strategy} & \textbf{How it decides} & \textbf{Cost / guarantee} \\
+\hline
+Greedy & Best local choice, no reconsideration & Fast; optimal only
+on certain problems \\
+Dynamic programming & Remember optimal answers to subproblems, build
+up & $O(n \cdot \text{state size})$; optimal when subproblems
+overlap \\
+Divide and conquer & Split, recurse, combine & Optimal; works when
+subproblems are independent \\
+Backtracking & Try choices, undo bad ones & Exponential worst case
+but often prunable \\
+Branch \& bound & Backtracking + bound pruning & Exact; can be
+practical for small NP-hard inputs \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{warnbox}[The trap: assuming greedy works]
+The most common mistake is to \emph{assume} the greedy algorithm
+you wrote is optimal because it produced the right answer on the
+example you tested. Try adversarial inputs. Read whether the
+textbook problem is known to admit a greedy-optimal solution. When
+in doubt, dynamic programming is usually within reach and
+provably optimal.
+\end{warnbox}
+
+\begin{ideabox}[Big picture]
+Greedy is the first algorithm-design strategy worth internalizing
+because it is often the right answer and always worth trying first.
+Write down the most natural ``best-at-each-step'' rule, test it
+against an optimal solution on a few adversarial inputs, and either
+(a) ship it with a proof sketch of why it's optimal, or (b) observe
+it fail and fall back to DP or exact search. The three problems in
+this section -- change, fractional knapsack, activity selection --
+are worth keeping in your head as the canonical ``greedy wins''
+references, and 0-1 knapsack from \textsection 2.8 as the canonical
+``greedy loses'' reference.
+\end{ideabox}
+
+\section{2.10 Dynamic Programming}
+
+Greedy (\textsection 2.9) makes one choice at each step and never
+looks back. Pure recursion (\textsection 2.5) recomputes the same
+subproblems over and over. \textbf{Dynamic programming (DP)} splits
+the difference: it solves every subproblem \emph{once}, stores the
+answer, and assembles the final answer from those stored pieces.
+
+When the problem has overlapping subproblems and optimal
+substructure, DP turns exponential-time recurrences into polynomial
+algorithms -- usually a dramatic improvement.
+
+\begin{defnbox}[Dynamic programming]
+A problem-solving technique that splits a problem into smaller
+subproblems, \textbf{computes each subproblem's answer exactly once},
+stores it in a table, and uses the stored answers to build up the
+final answer. Two common forms: \textbf{memoization} (top-down
+recursion with a cache) and \textbf{tabulation} (bottom-up iteration
+filling a table).
+\end{defnbox}
+
+\begin{defnbox}[Overlapping subproblems]
+A recurrence has \textbf{overlapping subproblems} when the same
+subproblem is computed multiple times in the naive recursion tree.
+DP's payoff is skipping those repeated computations.
+\end{defnbox}
+
+\begin{defnbox}[Optimal substructure]
+A problem has \textbf{optimal substructure} when an optimal solution
+to the whole can be assembled from optimal solutions to its
+subproblems. Without this, storing subproblem answers doesn't help.
+\end{defnbox}
+
+\subsection{Example 1: Fibonacci, fixed}
+
+\textsection 2.5 showed naive recursive \texttt{fib} blowing up
+exponentially because \texttt{fib(n-1)} and \texttt{fib(n-2)}
+recompute overlapping work. DP fixes this two ways.
+
+\paragraph{Top-down memoization.} Keep a cache, check it before
+recursing:
+
+\begin{examplebox}[Memoized recursion]
+\begin{verbatim}
+#include <vector>
+
+std::vector<long long> memo;  // sized to n+1, filled with -1
+
+long long fib(int n) {
+    if (n <= 1) return n;
+    if (memo[n] != -1) return memo[n];
+    return memo[n] = fib(n - 1) + fib(n - 2);
+}
+\end{verbatim}
+Each \texttt{fib(k)} gets computed once. $O(n)$ time, $O(n)$ memory
+on the cache plus $O(n)$ on the call stack.
+\end{examplebox}
+
+\paragraph{Bottom-up tabulation.} Build the answers iteratively from
+the base cases up:
+
+\begin{examplebox}[Tabulated iteration]
+\begin{verbatim}
+long long fib(int n) {
+    if (n <= 1) return n;
+    long long prev = 0, cur = 1;
+    for (int i = 2; i <= n; ++i) {
+        long long next = prev + cur;
+        prev = cur;
+        cur = next;
+    }
+    return cur;
+}
+\end{verbatim}
+$O(n)$ time, $O(1)$ memory, no recursion. This is usually the
+preferred form when the dependency structure is simple.
+\end{examplebox}
+
+\begin{ideabox}[Top-down vs. bottom-up]
+Top-down memoization is easier to write when a recurrence is already
+in your head -- you write the natural recursion, add three lines of
+caching, and stop. Bottom-up is usually tighter, avoids recursion
+depth limits, and often lets you throw away old table entries you no
+longer need (\textbf{rolling-array} trick -- the Fibonacci version
+uses only two variables instead of an $n$-size array).
+\end{ideabox}
+
+\subsection{Example 2: longest common substring (LCS)}
+
+\begin{notebox}[``LCS'' usually means subsequence, not substring]
+\textbf{Heads up on naming.} The acronym \textbf{LCS} in most
+textbooks (CLRS Ch.~15.4, MIT 6.006 Lecture 16, every DP reference
+you'll Google) stands for \textbf{longest common \emph{subsequence}}
+-- a non-contiguous match where characters from $s$ and $t$ must
+appear in the same order but can have gaps in between. So
+\texttt{ACE} is a common subsequence of \texttt{ABCDE} and
+\texttt{XAYCEZ}.
+
+What \emph{this} section covers is the longest common
+\textbf{substring} (contiguous) variant -- a different problem with
+a different recurrence:
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+& \textbf{Substring (this section)} & \textbf{Subsequence (standard ``LCS'')} \\
+\hline
+Match must be          & contiguous          & in-order, gaps allowed \\
+$L[i][j]$ if mismatch  & $0$ (reset)         & $\max(L[i{-}1][j],\ L[i][j{-}1])$ \\
+Answer location        & max anywhere in table & $L[m][n]$ corner \\
+\end{tabular}
+\normalsize
+\end{center}
+
+When you see ``LCS'' outside this chapter -- in a textbook,
+interview question, or Stack Overflow answer -- assume
+\emph{subsequence} unless context says otherwise. Both variants are
+useful; just don't confuse them.
+\end{notebox}
+
+A classic DP where the benefit is overwhelming. Naive recursion is
+exponential; DP is $O(n \cdot m)$ in the two string lengths. This
+algorithm underlies real-world tools: DNA sequence alignment, git's
+rename detection, plagiarism detection.
+
+\begin{defnbox}[Longest common substring problem]
+Given two strings \texttt{s} and \texttt{t}, find the longest
+\emph{contiguous} substring that appears in both. (Distinct from
+longest common \emph{subsequence}, where characters don't have to be
+adjacent.)
+\end{defnbox}
+
+\paragraph{The recurrence.} Let $L[i][j]$ be the length of the
+longest common substring that \emph{ends at} \texttt{s[i]} and
+\texttt{t[j]}.
+
+\[
+L[i][j] = \begin{cases}
+0 & \text{if } s[i] \ne t[j] \\
+1 + L[i-1][j-1] & \text{if } s[i] = t[j]
+\end{cases}
+\]
+
+The answer is the maximum value anywhere in the table. Its position
+tells you where the substring ends in \texttt{s}, which together with
+the length gives you the substring itself.
+
+\begin{examplebox}[LCS algorithm]
+\begin{verbatim}
+#include <string>
+#include <vector>
+
+std::string lcs(const std::string& s, const std::string& t) {
+    int n = s.size(), m = t.size();
+    std::vector<std::vector<int>> L(n, std::vector<int>(m, 0));
+
+    int best_len = 0, best_row = 0;
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < m; ++j) {
+            if (s[i] == t[j]) {
+                L[i][j] = (i > 0 && j > 0) ? L[i-1][j-1] + 1 : 1;
+                if (L[i][j] > best_len) {
+                    best_len = L[i][j];
+                    best_row = i;
+                }
+            }
+        }
+    }
+    int start = best_row - best_len + 1;
+    return s.substr(start, best_len);
+}
+\end{verbatim}
+$O(n \cdot m)$ time, $O(n \cdot m)$ memory. For typical inputs
+(dozens to thousands of characters) this is fine.
+\end{examplebox}
+
+\paragraph{Worked trace: \texttt{"Look"} vs \texttt{"Books"}.}
+Rows indexed by \texttt{Look}, columns by \texttt{Books}.
+
+\begin{center}
+\small
+\begin{tabular}{c|ccccc}
+ & B & o & o & k & s \\
+\hline
+L & 0 & 0 & 0 & 0 & 0 \\
+o & 0 & 1 & 1 & 0 & 0 \\
+o & 0 & 1 & 2 & 0 & 0 \\
+k & 0 & 0 & 0 & 3 & 0 \\
+\end{tabular}
+\normalsize
+\end{center}
+
+The maximum is 3, in row 3 (the \texttt{k}) column 3. The substring
+ends at \texttt{s[3] = 'k'} and is 3 long: \texttt{"ook"}.
+
+\subsection{Space optimization: the rolling-array trick}
+
+The LCS recurrence only looks one row back. So the whole table is
+wasteful -- you only need the previous row and the current row.
+
+\begin{examplebox}[Two-row LCS]
+\begin{verbatim}
+std::vector<int> prev(m, 0), cur(m, 0);
+int best_len = 0, best_row = 0;
+for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < m; ++j) {
+        if (s[i] == t[j])
+            cur[j] = (j > 0 ? prev[j-1] : 0) + 1;
+        else
+            cur[j] = 0;
+        if (cur[j] > best_len) { best_len = cur[j]; best_row = i; }
+    }
+    std::swap(prev, cur);
+    std::fill(cur.begin(), cur.end(), 0);
+}
+\end{verbatim}
+Same $O(n \cdot m)$ time. Memory drops from $O(n \cdot m)$ to
+$O(m)$. On the billion-character DNA strings the textbook mentions,
+this distinction is ``runs in memory'' vs.\ ``doesn't fit in RAM.''
+\end{examplebox}
+
+\subsection{Recognizing DP problems}
+
+Not every recursion wants memoization. A few signals that DP is the
+right tool:
+
+\begin{itemize}[leftmargin=*]
+    \item The naive recurrence recomputes the same subproblem on
+          multiple branches (Fibonacci, edit distance, LCS, coin
+          change, knapsack).
+    \item The problem has a clear \emph{state} -- a small tuple of
+          integers (index into a string, remaining capacity,
+          whether you're allowed to take an item, etc.) -- and the
+          answer depends only on that state.
+    \item An optimal answer to the whole can be built by combining
+          optimal answers to smaller states.
+\end{itemize}
+
+If the recursion tree doesn't overlap (binary search, merge sort),
+plain recursion is fine and DP adds overhead for no benefit. If the
+problem lacks optimal substructure (many game-theoretic or
+greedy-fails problems), DP doesn't apply and you need a different
+technique.
+
+\begin{warnbox}[DP is not automatic -- designing the state is the hard part]
+``Apply dynamic programming'' sounds like a step, but the real work
+is identifying \emph{what subproblem to solve}. Most DP bugs come
+from a state definition that either misses necessary information
+(answer depends on something you didn't track) or includes
+unnecessary information (table blows up exponentially). Spend the
+thinking up front defining $L[i][j] = $ \emph{``the
+\underline{\ \ \ \ \ \ \ \ \ \ }''} precisely; the code is almost
+mechanical after that.
+\end{warnbox}
+
+\subsection{DP vs. greedy vs. divide-and-conquer}
+
+\begin{center}
+\small
+\begin{tabular}{p{3.0cm} p{4.5cm} p{4.5cm}}
+& \textbf{Greedy} & \textbf{DP} \\
+\hline
+Decision style & One choice per step, no backtrack & Considers all
+choices for each subproblem \\
+Subproblems overlap & (doesn't matter) & Required for DP to help \\
+Optimal substructure needed & yes & yes \\
+Guarantees & Optimal only for some problems & Always optimal when
+it applies \\
+Typical cost & $O(n)$ or $O(n \log n)$ & Product of state
+dimensions \\
+\end{tabular}
+\normalsize
+\end{center}
+
+\begin{notebox}[Divide and conquer is the third cousin]
+Divide-and-conquer (merge sort, binary search, Karatsuba) also
+breaks a problem into subproblems, but the subproblems are
+\emph{independent} -- no need to cache, no overlap. When the
+recurrence happens to produce \emph{disjoint} subproblems, D\&C is
+the natural form; when it produces \emph{overlapping} ones, DP
+earns its keep.
+\end{notebox}
+
+\begin{ideabox}[Big picture]
+DP is the natural upgrade from recursion when the recurrence tree
+starts exploding. Every DP solution answers one question: ``what
+state do I need to track so that the optimal answer depends only on
+that state and the answers to smaller states?'' Once you've written
+that down, the rest is filling a table. The two examples in this
+section -- Fibonacci (one-dimensional state) and LCS
+(two-dimensional state) -- are worth keeping in your head as the
+shape of every DP solution you'll meet later. Coin change,
+knapsack, edit distance, and most string-alignment problems follow
+the same template.
+\end{ideabox}
+
+\section*{What this connects to}
+
+\begin{notebox}[Forward links to later chapters]
+\begin{itemize}
+    \item \textbf{Chapter 3 (Big-O).} The informal ``na\"ive Fibonacci is
+    exponential, memoized is linear'' claim becomes the precise
+    statement $O(2^n)$ vs.\ $O(n)$. Same story for every algorithmic
+    claim you made in this chapter -- ch.~3 supplies the notation.
+    \item \textbf{Sorting in ch.~3.} Insertion and selection sort are
+    incremental; merge sort and quicksort are divide-and-conquer
+    (recursive); the runtime analyses reuse the recursion-tree reasoning
+    from 2.5 verbatim.
+    \item \textbf{Binary search} (2.5) will reappear as the inner loop
+    of BST search (ch.~6) and as the \texttt{std::lower\_bound}
+    primitive used everywhere.
+    \item \textbf{Dynamic programming} (2.10) resurfaces in several
+    later-course problems: longest-path-in-DAG, knapsack, edit
+    distance, string alignment -- all use the same ``define the state,
+    write the recurrence, fill the table'' workflow.
+    \item \textbf{Greedy} (2.9) is the engine behind Dijkstra's algorithm
+    and Kruskal's MST (optional ch.~10), and behind Huffman coding in
+    compression. The greedy-choice property test you practiced here is
+    exactly what justifies those algorithms' correctness.
+    \item \textbf{Ethics / privacy} (2.6-2.7) isn't a detour -- it's the
+    lens through which the course will ask you to evaluate every project.
+    Expect discussion-board prompts on this all semester.
+\end{itemize}
+\end{notebox}
+
+\textbf{Companion materials.} Compact notes:
+\texttt{chapters/ch\_2/notes.tex}. Practice prompts (problem $\to$
+pseudocode $\to$ C++ workflow): \texttt{chapters/ch\_2/practice.md}.
+
+\end{document}
