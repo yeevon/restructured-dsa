@@ -1,6 +1,6 @@
 # ADR-002: Section IDs are slugged from `\section{...}` headings, scoped within a Chapter, with deterministic collision suffixes
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-07
 **Task:** TASK-001
 

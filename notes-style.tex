@@ -1,0 +1,177 @@
+% =======================================================================
+%   Shared style for CS 300 notes.
+%   Usage: place `\input{../../notes-style.tex}` right after \documentclass
+%   in each chapter's lectures.tex and notes.tex.
+% =======================================================================
+
+% ---- Layout -----------------------------------------------------------
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}        % space between paragraphs, no indent
+\usepackage{microtype}      % subtle kerning/spacing improvements
+
+% ---- Colors (muted palette, easy on light-sensitive eyes) -------------
+\usepackage{xcolor}
+\definecolor{pagebg}       {HTML}{FAF6F0}  % warm cream background
+\definecolor{bodyfg}       {HTML}{3D3A36}  % warm dark gray body text
+\definecolor{heading}      {HTML}{3D6A6B}  % muted teal
+\definecolor{subheading}   {HTML}{5B7A9C}  % dusty blue
+\definecolor{accent}       {HTML}{8A6B4A}  % warm tan
+\definecolor{linkcol}      {HTML}{5B7A9C}  % same as subheading
+\definecolor{mutedtext}    {HTML}{6B6560}  % secondary / caption text
+\definecolor{rulecol}      {HTML}{C8BFB0}  % separator / rule
+
+% Callout box palette
+\definecolor{defnFrame}    {HTML}{9DB89B}  \definecolor{defnBack}    {HTML}{EEF2E8}
+\definecolor{ideaFrame}    {HTML}{9FB4CD}  \definecolor{ideaBack}    {HTML}{E8EEF5}
+\definecolor{warnFrame}    {HTML}{CFAE87}  \definecolor{warnBack}    {HTML}{F5EDDF}
+\definecolor{noteFrame}    {HTML}{BFA6AE}  \definecolor{noteBack}    {HTML}{F2E8EE}
+\definecolor{exFrame}      {HTML}{9FBDBD}  \definecolor{exBack}      {HTML}{E8F0F0}
+\definecolor{codeBack}     {HTML}{F3EDE2}
+\definecolor{codeBorder}   {HTML}{D4CBBA}
+\definecolor{codeKeyword}  {HTML}{6B4F7A}
+\definecolor{codeString}   {HTML}{8A6B4A}
+\definecolor{codeComment}  {HTML}{8A857F}
+
+% ---- Page background + base text color --------------------------------
+\usepackage{pagecolor}
+\pagecolor{pagebg}
+\color{bodyfg}
+
+% ---- Fonts ------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\IfFileExists{libertine.sty}{%
+    \usepackage{libertine}      % warm, readable serif
+    \usepackage[scaled=0.95]{inconsolata}  % softer monospace
+}{}
+
+% ---- Hyperref ---------------------------------------------------------
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcol,
+    urlcolor=linkcol,
+    citecolor=linkcol,
+    pdfborder={0 0 0},
+}
+
+% ---- Section styling --------------------------------------------------
+\usepackage[explicit]{titlesec}
+\titleformat{\section}
+    {\color{heading}\Large\bfseries}
+    {\color{heading}\thesection\hspace{0.6em}}{0pt}{#1}
+\titleformat{\subsection}
+    {\color{subheading}\large\bfseries}
+    {\color{subheading}\thesubsection\hspace{0.5em}}{0pt}{#1}
+\titleformat{\subsubsection}
+    {\color{accent}\normalsize\bfseries}
+    {\color{accent}\thesubsubsection\hspace{0.5em}}{0pt}{#1}
+\titleformat{\paragraph}[runin]
+    {\color{accent}\bfseries}{}{0pt}{#1.}
+
+\titlespacing*{\section}{0pt}{1.6em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+
+% ---- Enumerate / itemize spacing --------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em, itemsep=2pt, topsep=4pt}
+\setlist[enumerate]{leftmargin=1.6em, itemsep=2pt, topsep=4pt}
+
+% ---- Code listings ----------------------------------------------------
+\usepackage{listings}
+\lstdefinestyle{notescode}{
+    backgroundcolor=\color{codeBack},
+    basicstyle=\ttfamily\small\color{bodyfg},
+    keywordstyle=\color{codeKeyword}\bfseries,
+    stringstyle=\color{codeString},
+    commentstyle=\color{codeComment}\itshape,
+    frame=single,
+    framesep=6pt,
+    rulecolor=\color{codeBorder},
+    showstringspaces=false,
+    breaklines=true,
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    aboveskip=8pt,
+    belowskip=8pt,
+}
+\lstset{style=notescode}
+
+% ---- Callout boxes (tcolorbox) ----------------------------------------
+\usepackage[most]{tcolorbox}
+
+\newtcolorbox{defnbox}[1][]{
+    enhanced, breakable,
+    colback=defnBack, colframe=defnFrame, coltitle=bodyfg,
+    title={\bfseries Definition \textemdash\ #1},
+    fonttitle=\bfseries,
+    boxrule=0.5pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+    attach boxed title to top left={xshift=10pt, yshift=-6pt},
+    boxed title style={colback=defnFrame, colframe=defnFrame, arc=2pt},
+    before skip=8pt, after skip=8pt,
+}
+\newtcolorbox{ideabox}[1][]{
+    enhanced, breakable,
+    colback=ideaBack, colframe=ideaFrame, coltitle=bodyfg,
+    title={\bfseries Key idea #1},
+    boxrule=0.5pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+    attach boxed title to top left={xshift=10pt, yshift=-6pt},
+    boxed title style={colback=ideaFrame, colframe=ideaFrame, arc=2pt},
+    before skip=8pt, after skip=8pt,
+}
+\newtcolorbox{warnbox}[1][]{
+    enhanced, breakable,
+    colback=warnBack, colframe=warnFrame, coltitle=bodyfg,
+    title={\bfseries Gotcha #1},
+    boxrule=0.5pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+    attach boxed title to top left={xshift=10pt, yshift=-6pt},
+    boxed title style={colback=warnFrame, colframe=warnFrame, arc=2pt},
+    before skip=8pt, after skip=8pt,
+}
+\newtcolorbox{notebox}[1][]{
+    enhanced, breakable,
+    colback=noteBack, colframe=noteFrame, coltitle=bodyfg,
+    title={\bfseries Aside #1},
+    boxrule=0.5pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+    attach boxed title to top left={xshift=10pt, yshift=-6pt},
+    boxed title style={colback=noteFrame, colframe=noteFrame, arc=2pt},
+    before skip=8pt, after skip=8pt,
+}
+\newtcolorbox{examplebox}[1][]{
+    enhanced, breakable,
+    colback=exBack, colframe=exFrame, coltitle=bodyfg,
+    title={\bfseries Example #1},
+    boxrule=0.5pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+    attach boxed title to top left={xshift=10pt, yshift=-6pt},
+    boxed title style={colback=exFrame, colframe=exFrame, arc=2pt},
+    before skip=8pt, after skip=8pt,
+}
+
+% ---- TikZ graph styles (added 2026-04-25 for ch_10 augmentation) ------
+% tcolorbox[most] already loads tikz; this block declares the libraries
+% + shared `vertex` / `edge` styles used by ch_10's general directed-graph
+% diagrams. ch_9's tree-style TikZ uses inline overrides and is
+% unaffected. Simple circle nodes + arrow edges only -- no production
+% styling.
+\usetikzlibrary{arrows.meta, positioning, calc}
+\tikzset{
+    vertex/.style={circle, draw, minimum size=7mm, inner sep=0pt,
+                   font=\small, thick},
+    vsource/.style={vertex, fill=ideaBack},
+    vdone/.style={vertex, fill=defnBack},
+    edge/.style={->, >=Stealth, thick},
+    uedge/.style={-, thick},
+    treeedge/.style={->, >=Stealth, thick},
+    backedge/.style={->, >=Stealth, thick, dashed, red!70!black},
+    fwdedge/.style={->, >=Stealth, thick, blue!60!black},
+    crossedge/.style={->, >=Stealth, thick, green!50!black, dotted},
+    mstedge/.style={-, very thick, accent},
+}
+
+% ---- Title block ------------------------------------------------------
+\usepackage{titling}
+\pretitle{\begin{center}\color{heading}\LARGE\bfseries}
+\posttitle{\end{center}\vskip -0.4em}
+\preauthor{\begin{center}\color{mutedtext}\normalsize}
+\postauthor{\end{center}}
+\predate{\begin{center}\color{mutedtext}\small}
+\postdate{\end{center}\vspace{0.4em}{\color{rulecol}\hrule height 0.4pt}\vspace{1.2em}}

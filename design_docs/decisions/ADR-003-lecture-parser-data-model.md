@@ -1,6 +1,6 @@
 # ADR-003: Lecture parser produces an intermediate Chapter / Section model that both the HTML renderer and the future Script extractor consume
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-07
 **Task:** TASK-001
 

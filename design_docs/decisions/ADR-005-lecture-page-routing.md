@@ -1,6 +1,6 @@
 # ADR-005: Lecture Page route is `/chapters/{chapter_id}/lecture` with Section anchors as URL fragments
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-07
 **Task:** TASK-001
 

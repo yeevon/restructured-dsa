@@ -7,16 +7,15 @@ This file is agent-owned (architect agent). Updates happen during task work. Hum
 | # | Title | Task | Date |
 |---|---|---|---|
 | 000 | Baseline: import "Decisions already made" from CLAUDE.md | bootstrap | 2026-05-07 |
+| 001 | Chapter ID is derived from the LaTeX filename | TASK-001 | 2026-05-07 |
+| 002 | Section IDs are slugged from `\section{...}` headings, scoped within a Chapter, with deterministic collision suffixes | TASK-001 | 2026-05-07 |
+| 003 | Lecture parser produces an intermediate Chapter / Section model that both the HTML renderer and the future Script extractor consume | TASK-001 | 2026-05-07 |
+| 004 | Unrecognized LaTeX environments and commands render as visible passthrough blocks, never as silent drops | TASK-001 | 2026-05-07 |
+| 005 | Lecture Page route is `/chapters/{chapter_id}/lecture` with Section anchors as URL fragments | TASK-001 | 2026-05-07 |
 
 ## Proposed ADRs (awaiting human acceptance)
 
-| # | Title | Task |
-|---|---|---|
-| 001 | Chapter ID is derived from the LaTeX filename | TASK-001 |
-| 002 | Section IDs are slugged from `\section{...}` headings, scoped within a Chapter, with deterministic collision suffixes | TASK-001 |
-| 003 | Lecture parser produces an intermediate Chapter / Section model that both the HTML renderer and the future Script extractor consume | TASK-001 |
-| 004 | Unrecognized LaTeX environments and commands render as visible passthrough blocks, never as silent drops | TASK-001 |
-| 005 | Lecture Page route is `/chapters/{chapter_id}/lecture` with Section anchors as URL fragments | TASK-001 |
+(none)
 
 ## Pending resolution (need human input)
 

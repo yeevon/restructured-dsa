@@ -1,2 +1,15 @@
 [tool.pytest.ini_options]
 markers = ["task(id): tag tests with the task ID that introduced them"]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "mypy>=2.0.0",
+    "plastex>=3.1",
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+    "starlette>=1.0.0",
+    "uvicorn>=0.46.0",
+]

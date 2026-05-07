@@ -1,6 +1,6 @@
 # ADR-004: Unrecognized LaTeX environments and commands render as visible passthrough blocks, never as silent drops
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-07
 **Task:** TASK-001
 

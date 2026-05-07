@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ chapter.title | e }} — Lecture</title>
+  <script>
+    MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
+  <style>
+    body { font-family: serif; max-width: 900px; margin: 0 auto; padding: 1rem 2rem; }
+    h1 { border-bottom: 2px solid #333; }
+    section { margin-bottom: 2rem; }
+    .math-display { overflow-x: auto; }
+    .lecture-passthrough { border: 2px dashed #c00; padding: 0.5rem 1rem; margin: 1rem 0; background: #fff8f8; }
+    .lecture-passthrough-label { font-weight: bold; color: #c00; margin: 0 0 0.5rem; }
+    .lecture-passthrough-source { background: #f8f8f8; border: 1px solid #ccc; padding: 0.5rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <article data-designation="{{ chapter.designation | e }}" data-chapter-id="{{ chapter.id | e }}">
+    <h1>{{ chapter.title | e }}</h1>
+    <p><small>Designation: {{ chapter.designation | e }}</small></p>
+    {% for section in chapter.sections %}
+      {{ render_section(section, chapter.designation) | safe }}
+    {% endfor %}
+  </article>
+</body>
+</html>

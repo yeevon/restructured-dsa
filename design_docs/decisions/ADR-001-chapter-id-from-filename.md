@@ -1,6 +1,6 @@
 # ADR-001: Chapter ID is derived from the LaTeX filename
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-07
 **Task:** TASK-001
 

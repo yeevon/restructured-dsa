@@ -1,0 +1,31 @@
+\documentclass{article}
+\title{Test Chapter: Data Structures Overview}
+\begin{document}
+\maketitle
+
+\section{Introduction to Arrays}
+An array is a contiguous block of memory that stores elements of the same type.
+We can access any element in $O(1)$ time using its index.
+
+\subsection{Array Indexing}
+Most languages use zero-based indexing: the first element is at index 0.
+
+\section{Introduction to Linked Lists}
+A linked list stores elements in nodes connected by pointers.
+Traversal is $O(n)$ because we must follow pointers from head to tail.
+
+\begin{equation}
+T(n) = O(n)
+\end{equation}
+
+\begin{verbatim}
+struct Node {
+    int data;
+    Node* next;
+};
+\end{verbatim}
+
+\section{Stacks and Queues}
+Both stacks and queues are abstract data types built on top of arrays or linked lists.
+
+\end{document}
