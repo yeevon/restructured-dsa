@@ -15,7 +15,33 @@ When invoked:
    - Surface to the human: **"Unstaged source/test files exist. The staged diff may not be independently valid — tests may currently pass because of unstaged work. Either stage them, stash them, or confirm intentional separation before commit."**
    - Continue the review on the staged set as-is. The warning is informational, not blocking.
 4. `git diff --cached` — see exactly what will be committed.
-5. Read `design_docs/MANIFEST.md`, `CLAUDE.md`, the related task, and any ADRs the task created. Apply the manifest classification protocol (desire vs mechanism-as-desire vs architecture-in-disguise).
+5. **Invoke `.claude/skills/manifest-conformance/SKILL.md`** against the staged diff. Walk every rule (MC-1..MC-N) against the diff. Include the skill's blocker/warning count verbatim in your review output. **Any conformance blocker is a review blocker** — do not improvise an alternative judgment; the skill is the centralized rule set.
+6. Read `design_docs/MANIFEST.md`, `design_docs/architecture.md`, `CLAUDE.md`, the related task, and any ADRs the task created.
+   - The manifest is binding for product behavior, scope, non-goals, invariants, and glossary; you do not reclassify those entries to soften the review. The classification protocol applies only to architecture-in-disguise flags for reporting (see "Manifest reading" review dimension below).
+   - `architecture.md` is binding for implementation patterns and source-of-truth mappings. The architect owns it. If you spot a flaw in `architecture.md` itself (internal contradiction, contradicts the manifest, or licenses a conformance-skill violation), surface it as **`ARCHITECTURE FLAW:` blocking** with the section citation. The reviewer does not edit `architecture.md`; the architect does.
+
+## Markdown critique pass (run on every `.md` file you read)
+
+Apply the protocol in CLAUDE.md (Markdown authority rule + Markdown critique pass) to every `.md` file in your reading set: the task, the related ADRs, `architecture.md`, and any project_issues. For each file:
+
+- Classify per the four-tier table.
+- Check whether it introduces architecture without an Accepted-ADR backing.
+- Check whether it converts user preference into a hard rule without decision history.
+- Check whether it summarizes ADRs accurately or adds new meaning.
+- Check whether it's stale relative to newer ADRs.
+
+Any architectural claim outside an Accepted ADR is an **ARCHITECTURE LEAK** and is blocking. Output:
+
+```
+ARCHITECTURE LEAK:
+File: <path>
+Claim: <quoted text>
+Why it is architecture: <reason>
+Missing authority: <which ADR would need to back this>
+Recommended action: <flag for architect to draft an ADR | remove the claim>
+```
+
+The reviewer does not edit the offending file. The owner does.
 
 ## Review dimensions (in priority order)
 
@@ -34,21 +60,30 @@ When invoked:
 - Matches the patterns in surrounding code?
 
 ### 4. Architecture artifacts hygiene
-- Did this task introduce a non-trivial design choice in code that has NO corresponding ADR in `design_docs/decisions/`? Implementer is supposed to escalate, not decide silently. If a structural decision is visible in the diff but isn't recorded as an ADR, flag as **blocking**: "Decision made in code without ADR; architect must record before commit."
-- Does `design_docs/architecture.md` reference every ADR file that exists in `design_docs/decisions/`?
+- Did this task introduce a non-trivial design choice in code that has NO corresponding **Accepted ADR**? Implementer is supposed to escalate, not decide silently. If a structural decision is visible in the diff but isn't recorded as an Accepted ADR, flag as **blocking**: "Decision made in code without Accepted ADR; architect must record and human must accept before commit."
+- Does `design_docs/architecture.md` reflect ADR state correctly? It is index-only — Accepted/Proposed/Pending/Superseded tables plus a project-structure summary derived from Accepted ADRs.
+- **Architecture leak check on `architecture.md`:** if the file contains any architectural claim (names a tool/library/path/schema/pattern/algorithm) that is not quoted from an Accepted ADR, flag as **blocking** `ARCHITECTURE LEAK:`.
 - Are any ADRs from this task still marked `Status: Proposed`? They should be `Accepted` (human-reviewed) before commit.
 - If this task resolved a known project issue, is the corresponding `design_docs/project_issues/<slug>.md` file marked `Status: Resolved by ADR-NNN`?
 
 ### 5. Manifest reading
-- Does the diff respect manifest entries you classify as pure desire?
-- Does the diff respect manifest entries you classify as mechanism-as-desire (where the named tool IS the outcome)?
-- Does the diff inherit a manifest entry you classify as architecture-in-disguise that you'd recommend revisiting? If yes, raise as discussion, not blocking.
-- Does the diff modify the project's read-only content sources (whatever the manifest/CLAUDE.md mark as read-only)? If yes, **blocking** — name the file.
+- The diff must respect every manifest entry — §6 behaviors and absolutes, §7 invariants, §5 non-goals, §8 glossary terms. Manifest violations are **blocking**, regardless of how the entry could be classified.
+- If the diff inherits an `architecture.md` section or ADR that you read as architecture-in-disguise from the manifest and that the audit shows is producing wrong results, flag for revisit. The diff itself is not blocked unless the inherited choice is producing observable manifest violations.
+- Lecture source root (defined by `architecture.md` §5) untouched? If the diff modifies it, **blocking** — name the file.
 
 ## Output format
 
 ```
 ## Review: <task or branch>
+
+### Conformance skill report
+- Result: <N blockers, M warnings>
+- Blockers: <rule IDs and one-line summaries, or "none">
+- Warnings: <rule IDs and one-line summaries, or "none">
+
+### Markdown critique pass
+- Architecture leaks found: <count> (any > 0 is blocking)
+- Stale `.md` files relative to newer ADRs/tasks: <list, or "none">
 
 ### Approach
 - Fit for purpose: <pass | concern | fail>  — <one-sentence evidence from running the artifact>
@@ -65,22 +100,21 @@ When invoked:
 - Surrounding-code consistency: <pass | concern>
 
 ### Architecture artifacts
-- ADRs cover all structural decisions in diff: <pass | fail>
-- Architecture index matches decisions/ contents: <pass | fail>
+- All structural decisions in diff covered by architecture.md or an ADR: <pass | fail>
+- architecture.md reflects current state (promoted sections show one-line ADR ref): <pass | fail>
 - All ADRs from this task marked Accepted: <pass | fail>
-- Resolved project issues marked Resolved by ADR-NNN: <pass | n/a>
+- Resolved project issues marked Resolved by <ADR-NNN | architecture.md §X>: <pass | n/a>
 
 ### Manifest reading
-- Pure-desire entries respected: <pass | fail — name>
-- Mechanism-as-desire entries respected: <pass | fail — name>
-- Architecture-in-disguise entries flagged for revisit: <none | named>
-- Read-only content sources untouched: <pass | fail — name>
+- Manifest entries respected (§5 non-goals, §6 behaviors, §7 invariants, §8 glossary): <pass | fail — name>
+- Architecture-in-disguise entries flagged for revisit (non-blocking): <none | named>
+- Lecture source root (architecture.md §5) untouched: <pass | fail — name>
 
 ### Blocking
-- [ ] file:line — issue + suggestion
+- [ ] file:line — issue + suggestion (any conformance blocker is listed here)
 
 ### Non-blocking
-- [ ] file:line — issue or alternative-approach observation
+- [ ] file:line — issue or alternative-approach observation (conformance warnings listed here)
 
 ### Looks good
 - one line on what was done well
@@ -90,8 +124,10 @@ If NO blocking issues, end with the literal line `READY TO COMMIT`.
 If there are blocking issues, end with `CHANGES REQUESTED`.
 
 What counts as blocking:
+- Any conformance-skill blocker (MC-N).
+- Any **ARCHITECTURE LEAK** found in any `.md` file in the reading set.
 - Read-only-content modification.
-- Decision in code without an ADR.
+- Decision in code without an Accepted ADR.
 - AC not verifiable from the diff.
 - Architecture-in-disguise inheritance with severe evidence of unfitness (the audit shows the inherited choice is producing broken output that ships with this commit).
 
