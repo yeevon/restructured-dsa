@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-002-chapter-navigation-grouped-by-designation.md`
 **Started:** 2026-05-07T00:00:00Z
-**Status:** Blocked — half-implemented
-**Current phase:** blocked (ADR-006 navigation rail has no CSS; project_issue `adr006-rail-half-implemented-no-css.md` opened; resolution pending before commit)
+**Status:** Committed (jointly with TASK-003 at commit `3521c62` on 2026-05-08)
+**Current phase:** committed (project_issue `adr006-rail-half-implemented-no-css.md` resolved by ADR-008; styled navigation surface shipped under TASK-003)
 
 ---
 
@@ -724,3 +724,16 @@ Mechanical row move only. ADR-005 now appears in the Accepted ADRs table (4-row 
 
 **Output summary:**
 TASK-002 re-blocked at the post-review boundary. ADR-006's navigation rail mechanism is implemented but its styling deliverable is missing entirely; no CSS rules exist for any of the rail's class names. Missed across the workflow: architect (ADR didn't scope CSS), implementer (templates without rules), reviewer (no rendered-page walk), orchestrator (verify on `curl`). Project_issue opened with three resolution paths; recommendation is amend ADR-006 (Path 1). Process artifacts created in response: 4 new skills covering UI delivery, authority state, test honesty, audit append-only — plus a reshaped orchestrator memory entry. TASK-002 working tree preserved; commit gated on project_issue resolution. Next session resumes by picking a path from the new project_issue (or `/next` will see it surfaced).
+
+### Run 013 — orchestrator (joint commit closure)
+
+**Time:** 2026-05-08
+
+**Trigger:** TASK-003 shipped under commit `3521c62`. ADR-008 (the styling layer that resolves `project_issues/adr006-rail-half-implemented-no-css.md`) is Accepted; ADR-010 (Playwright UI verification) is Accepted; the navigation rail and landing page are now styled in `app/static/base.css`. TASK-002's parked working tree committed in the same commit as TASK-003.
+
+**Files modified:** this audit file's header only (`Status: Blocked — half-implemented` → `Committed (jointly with TASK-003 at commit 3521c62 on 2026-05-08)`; `Current phase: blocked (...)` → `committed (...)`). No prior run entries or Human-gates rows altered (AA-1..AA-6 honored).
+
+**Pushback raised:** none. The half-implementation that put TASK-002 in `Blocked` state on Run 012 has been resolved by ADR-008's styling deliverable shipping under TASK-003, exactly along the supersedure path Run 012 named.
+
+**Output summary:**
+TASK-002 closure recorded. The `Blocked → Committed` transition is the natural consequence of TASK-003's resolution of `project_issues/adr006-rail-half-implemented-no-css.md` (now `Resolved by ADR-008`). The working tree referenced in Run 012 has been committed as part of TASK-003's 26-file diff (commit `3521c62`); some files merged with TASK-003's edits (notably the templates and `tests/test_task002_navigation.py`), so the file count differs from Run 012's snapshot, but no committed surface is missing from TASK-002's contract. Joint commit is the standard close-out path for a parked task whose blocker is resolved by the next task.

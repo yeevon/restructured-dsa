@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-003-style-navigation-surface.md`
 **Started:** 2026-05-08T00:00:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed
+**Current phase:** committed (3521c62; joint commit with TASK-002)
 
 ---
 
