@@ -12,17 +12,20 @@ Plan:
 
 1. **Tests first.**
    - Invoke the `test-writer` subagent with the task.
-   - Run `pytest`. Identify the new tests by file path (those test-writer just created). Confirm at least one is failing.
+   - Run the project's test command. Identify the new tests by file path (those test-writer just created). Confirm at least one is failing.
+   - If test-writer outputs `PUSHBACK:`, surface to me and STOP. Do not proceed to implementation until I resolve.
    - Show me the test files. Pause for me to review.
 
 2. **Implementation.**
    - Invoke the `implementer` subagent with the task + test file paths.
-   - The implementer must NOT modify tests. If it produces ESCALATION or MANIFEST CONFLICT, surface and STOP.
+   - The implementer must NOT modify tests.
+   - If implementer outputs `PUSHBACK:` or `MANIFEST CONFLICT:` or `ESCALATION:`, surface and STOP.
 
 3. **Verify.**
-   - Run `pytest`. All tests pass.
-   - Run `ruff check --fix && ruff format && mypy cs300/`.
-   - Show me a summary: ADRs from this task, files changed, tests added, ACs satisfied.
+   - Run the project's test command. All tests pass.
+   - Run the project's lint and type-check commands (whatever the project uses — see CLAUDE.md or pyproject.toml/package.json for the configured tooling).
+   - **End-to-end verification.** Run the actual user-visible artifact the task delivers (start the dev server and hit the route, run the CLI, render the page, generate the file). Look at the result. If the task touched a rendering/parsing/batch pipeline, audit the WHOLE affected set, not one example. Lead with counts.
+   - Show me a summary: ADRs from this task, files changed, tests added, ACs satisfied, end-to-end verification result, any adjacent bugs surfaced but not fixed.
 
 Do NOT stage, commit, or push. I do that. After I commit, I'll run `/next`.
 
