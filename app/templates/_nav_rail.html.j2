@@ -1,5 +1,5 @@
 <div class="nav-rail-inner">
-  <h2 class="nav-section-label">Mandatory</h2>
+  <h2 class="nav-section-label" data-designation="Mandatory">Mandatory</h2>
   <ul class="nav-chapter-list">
     {% for entry in nav_groups["Mandatory"] %}
     <li class="nav-chapter-item{% if entry.label_status != 'ok' %} nav-chapter-error{% endif %}">
@@ -10,7 +10,7 @@
     {% endfor %}
   </ul>
 
-  <h2 class="nav-section-label">Optional</h2>
+  <h2 class="nav-section-label" data-designation="Optional">Optional</h2>
   <ul class="nav-chapter-list">
     {% for entry in nav_groups["Optional"] %}
     <li class="nav-chapter-item{% if entry.label_status != 'ok' %} nav-chapter-error{% endif %}">

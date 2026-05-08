@@ -7,7 +7,7 @@ description: Guardrails for tasks that ship user-facing HTML — navigable surfa
 
 This skill is invoked when a task ships an actual user-facing HTML surface — a page, a layout, a navigation control, a multi-page consistency mechanism. It does not apply to internal API responses, content-transformation pipelines whose output is consumed by other code, or tasks that touch templates only to fix non-visual bugs.
 
-**Authority of this skill:** operational instruction (Tier 2). It does not introduce architectural claims. Concrete names — which CSS file, which class names, which test framework — come from the ADRs the rules cite, never from this file. If a rule's backing ADR does not yet exist, the rule notes "ADR pending" and the architecture portion is **dormant**.
+**Authority of this skill:** operational instruction (Tier 2). It does not introduce architectural claims. Concrete names — which CSS file, which class names, which test framework — come from the ADRs the rules cite, never from this file. If a rule's backing ADR does not yet exist, the rule notes "ADR pending" and the architecture portion is **dormant**. The UI test framework question (UI-4) is settled at the project level by ADR-010 (Playwright via `pytest-playwright` with last-run screenshot artifacts); UI-5 and UI-6's "rendered-surface verification" is satisfied through that mechanism.
 
 ## When to invoke
 
@@ -59,33 +59,33 @@ The implementer's run summary for a UI task must name which CSS file was edited 
 - **Severity:** **blocker** when the staged diff adds template classes (`.foo-bar`, `.baz-quux`) for which no rule exists in any project CSS file.
 - **Trace:** the CSS file named by UI-1 / UI-2.
 
-### UI-4 — UI surfaces must have rendered-behavior tests
+### UI-4 — UI surfaces must have rendered-behavior tests per ADR-010
 
-Tests for a route that returns HTML for a user must include rendered-behavior verification, not just `TestClient` HTML-string assertions. A `TestClient` test confirming `"Mandatory"` appears in the response body verifies markup, not behavior. Rendered-behavior tests verify properties a user actually depends on: link reachability, focus order, visible layout integrity, navigability across pages.
+Tests for a route that returns HTML for a user must include rendered-behavior verification, not just `TestClient` HTML-string assertions. A `TestClient` test confirming `"Mandatory"` appears in the response body verifies markup, not behavior. Rendered-behavior tests verify properties a user actually depends on: link reachability, visible layout integrity, role-and-name reachability, navigability across pages.
 
-- **Action when no UI test framework exists in the project:** test-writer raises `PUSHBACK:` and stops **unless** the task already includes one of the following explicit gates. The architect (or human) must choose one:
-  1. add a UI test framework via ADR before the task proceeds (Playwright, Selenium, or equivalent — the choice is architectural and lives in an ADR);
-  2. add **manual browser verification** as a required acceptance gate for this task — explicitly named in the task ACs, and explicitly captured in the Human-gates table when verified;
-  3. defer rendered-behavior testing to a named follow-up task — produces a **warning**, not a blocker, and must be justified in the task file.
-- **Severity:** **blocker** when the task is a UI task and none of (1)/(2)/(3) is present; **warn** when option (3) is chosen and justified.
-- **Trace:** convention surfaced by this skill. Don't silently ship UI without rendered verification.
+The project-wide answer to *how* rendered-behavior verification happens is **ADR-010**: Playwright via `pytest-playwright`, with rendered-DOM-content assertions written under `tests/playwright/` and run as part of `python3 -m pytest tests/`. UI tasks do not re-decide between framework options on a per-task basis — they cite ADR-010 and add Playwright tests for the new surface. New `string in body` assertions are not an acceptable substitute for new UI work.
 
-### UI-5 — Verify pass requires browser eyeballing
+- **Action for any UI task:** the test-writer adds at least one Playwright test under `tests/playwright/` covering each visual AC. If a task ships UI without Playwright coverage of its rendered-behavior ACs, the test-writer raises `PUSHBACK:` and stops.
+- **Action if a UI task has a strong reason to defer rendered-behavior testing to a named follow-up:** the deferral must be justified in the task file and explicitly accepted by the human; this produces a **warning**, not a blocker. Silent deferral is not allowed.
+- **Severity:** **blocker** when a UI task ships without Playwright coverage of its rendered-behavior ACs and no justified deferral is recorded; **warn** when a justified deferral is on record.
+- **Trace:** ADR-010 (UI verification mechanism — Playwright via `pytest-playwright`). Don't silently ship UI without rendered verification.
 
-The /implement verify phase for a UI task is not satisfied by `curl` + `grep` + structural HTML assertions. The orchestrator (or human) must open the rendered page in a browser and confirm the surface is usable: the layout renders, controls are clickable, navigation works, the styling makes the affordance visible. If the orchestrator cannot open a browser, it must say so explicitly and require the human to eyeball before reporting verify-pass.
+### UI-5 — Verify pass requires human visual confirmation of the rendered surface
 
-- **Severity:** **blocker** when the verify-phase report claims success on a UI task without naming a browser inspection step.
-- **Trace:** operational verification rule for UI work; may be mirrored in `CLAUDE.md` or in reviewer/orchestrator prompts.
+The /implement verify phase for a UI task is not satisfied by `curl` + `grep` + structural HTML assertions, and is not satisfied by Playwright tests passing alone. A human must visually confirm that the rendered surface is usable: the layout renders, controls are reachable, navigation works, the styling makes the affordance visible. The default mechanism under ADR-010 is **the human reviews the last-run Playwright screenshots** under the artifact directory ADR-010 names; opening the rendered page directly in a browser remains an available substitute when the human prefers it. The load-bearing requirement is that a human eyeballs the surface — not which channel they eyeball it through. If the orchestrator cannot trigger either path, it must say so explicitly and require the human to perform the visual check before reporting verify-pass.
 
-### UI-6 — Reviewer of a UI task must walk the rendered surface
+- **Severity:** **blocker** when the verify-phase report claims success on a UI task without naming either screenshot review or direct browser inspection by the human.
+- **Trace:** ADR-010 (verification gate — Playwright tests pass + human reviews last-run screenshots); operational verification rule for UI work; may be mirrored in `CLAUDE.md` or in reviewer/orchestrator prompts.
 
-The reviewer's protocol for a UI task includes opening the rendered page (or describing the rendered surface from a screenshot the human supplies) and confirming the staged diff produces a usable result, not just a structurally-correct HTML response. ADR fidelity for a UI ADR includes "does the implementation produce the affordance the ADR's Decision section describes," not only "does the diff add the right files."
+### UI-6 — Reviewer of a UI task must confirm rendered-surface verification
 
-- **Severity:** **blocker** in the reviewer's verdict when the staged diff is a UI task and no rendered-surface check is present in the review.
-- **Trace:** UI-5 by analogy (rendered verification is the load-bearing observation; reviewer is one of the roles obligated to make it).
+The reviewer's protocol for a UI task includes confirming that the rendered surface has been visually checked, not just that the staged diff is structurally correct. Under ADR-010 this confirmation is satisfied by an audit Human-gates row of the form `rendered-surface verification — pass` (Playwright tests green; screenshots reviewed by the human). Equivalent direct browser inspection by the human, recorded in the same row format, is also acceptable. ADR fidelity for a UI ADR includes "does the implementation produce the affordance the ADR's Decision section describes," not only "does the diff add the right files."
+
+- **Severity:** **blocker** in the reviewer's verdict when the staged diff is a UI task and no audit row marked `rendered-surface verification — pass` is present, or when no equivalent record of human visual confirmation exists.
+- **Trace:** ADR-010 (verification gate and audit-row format); UI-5 by analogy (rendered verification is the load-bearing observation; reviewer is one of the roles obligated to confirm it occurred).
 
 ## Notes
 
-- This skill does not name a specific UI test framework, CSS architecture, or styling pattern. Those decisions are architectural and live in ADRs. The skill enforces *that* such decisions are made and recorded; it does not make them.
-- If the project has not yet adopted a UI test framework, UI-4 lets early UI work proceed via the manual-browser-verification gate or a named-follow-up deferral, while still preventing silent ship. The framework decision is not forced on the first UI task; it is forced as soon as the manual gate stops being sustainable.
-- Half-implementation patterns this skill specifically catches: class names with no CSS rules; templates with no rendered verification; verify reports based on `curl` output alone; reviewers who walk AC compliance without walking the rendered surface.
+- This skill does not name a specific CSS architecture or styling pattern; those decisions are architectural and live in ADRs. The skill enforces *that* such decisions are made and recorded.
+- The UI test framework question (UI-4) is settled at the project level by ADR-010 (Playwright via `pytest-playwright`, with last-run screenshots saved to a gitignored artifact directory). UI tasks cite ADR-010 by reference; they do not re-decide the framework. If a future UI task surfaces evidence that ADR-010 is unfit for some surface, the architect proposes a supersedure ADR — the skill does not route around the accepted decision.
+- Half-implementation patterns this skill specifically catches: class names with no CSS rules; UI tasks shipped with `string in body` assertions in place of Playwright rendered-DOM assertions; verify reports based on `curl` output or pytest-only test output without human visual confirmation; reviewers who walk AC compliance without confirming a `rendered-surface verification — pass` audit row.

@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-002-chapter-navigation-grouped-by-designation.md`
 **Started:** 2026-05-07T00:00:00Z
-**Status:** In progress
-**Current phase:** test (amendment of TASK-001 `test_ac3_mandatory_not_optional` per project-issue Path 1)
+**Status:** Blocked — half-implemented
+**Current phase:** blocked (ADR-006 navigation rail has no CSS; project_issue `adr006-rail-half-implemented-no-css.md` opened; resolution pending before commit)
 
 ---
 
@@ -18,6 +18,7 @@
 | 2026-05-08 | Tests reviewed | accepted | Human accepted Run 006 tests as-is to validate the test-writer agent change end-to-end; assumptions (Mandatory-before-Optional ordering, `app.config.CONTENT_ROOT` test seam) treated as the contract the implementer must honor |
 | 2026-05-08 | TASK-002 parked | parked | Implementer (Run 007) raised ESCALATION: `tests/test_task001_lecture_page.py:181` (`test_ac3_mandatory_not_optional`) collides with ADR-006's rail (asserts `"Optional" not in html` against ch-01 lecture; rail now legitimately renders the literal "Optional" as a section header). Human chose "Park TASK-002 here" rather than amend the TASK-001 test, revisit ADR-006, or have orchestrator make a surgical fix. Working tree left intact (25 new TASK-002 tests pass; 1 TASK-001 test fails; 137 TASK-001 tests pass). Collision logged at `design_docs/project_issues/task001-test-vs-adr006-rail-collision.md` for future resolution. No commit. |
 | 2026-05-08 | TASK-002 unparked; Path 1 chosen | unparked | Human selected Path 1 from `project_issues/task001-test-vs-adr006-rail-collision.md`: amend `tests/test_task001_lecture_page.py::test_ac3_mandatory_not_optional` to scope the assertion to ch-01's per-Chapter badge element (rail's "Optional" section header is legitimate per ADR-006). Test-writer agent will perform the amendment. Project_issue will be marked Resolved by Path 1 once tests pass. |
+| 2026-05-08 | TASK-002 blocked — ADR-006 half-implemented | blocked | Post-`/review` re-read by human: rail has no CSS rules for any of its class names; renders as wall of unstyled text in real browser. Missed by architect (ADR-006 didn't scope CSS), implementer (added classes without rules), reviewer (didn't open browser), orchestrator (declared verify-pass on `curl`). Project_issue opened: `project_issues/adr006-rail-half-implemented-no-css.md`. Audit `Status` flipped to `Blocked — half-implemented`. Process artifacts created in response: 4 new skills (`ui-task-scope`, `authority-state-check`, `test-honesty-check`, `audit-append-only`) + reshaped orchestrator memory. TASK-002 cannot commit as "complete" until project_issue resolves. |
 
 ---
 
@@ -671,3 +672,55 @@ Reviewed 43 staged files: 6 app source/template files (3 new + 3 modified), 14 t
 
 **Output summary:**
 Mechanical row move only. ADR-005 now appears in the Accepted ADRs table (4-row → 5-row index). Proposed ADRs table is empty. Project-structure paragraph unchanged. Reviewer Finding 1 (Run 010) addressed.
+
+### Run 012 — orchestrator (TASK-002 blocked: ADR-006 half-implemented)
+
+- **Timestamp:** 2026-05-08T00:00:00Z
+- **Agent:** orchestrator (Claude Code main thread)
+- **Phase:** blocked
+
+**Trigger:** Human re-read of the rendered page after `/review` returned `READY WITH NOTES`. Human observation: *"the raw html waas rendered but no css was actually produced to style the lhs rail so there is just a wall of text at the top of the page... neither the implmeneter, architect and reviewer all failed in addressing the fact actual styles would need to be added."* Reviewer's verdict was technically correct against AC compliance and ADR fidelity as defined; the gap was a category error — no rule existed in the project to require styling-as-deliverable for UI tasks.
+
+**Correction to Run 009 (orchestrator verify):** Run 009 declared *"both surfaces render correctly"* based on `uvicorn` + `curl` + grepping the HTML for class names. That was structure verification, not visual verification. Per `audit-append-only` AA-1, Run 009 itself is not edited; this Run 012 records the correction. The actual rendered surface is unstyled and not user-usable. The implementer's Run 007 conformance walk and `TestClient` results were also internally correct against the rules then in force; the gap is upstream in the rules, not in their compliance.
+
+**Files read:**
+- `design_docs/audit/TASK-002-chapter-navigation-grouped-by-designation.md` (Run 009/010/011 to confirm verify and review claims; Human-gates table to determine next gate row)
+- `app/templates/base.html.j2`, `app/templates/_nav_rail.html.j2` (to identify the unstyled class names)
+- `static/lecture.css` (existing CSS file; no rules for rail classes confirmed)
+- `design_docs/decisions/ADR-006-navigation-surface-shape.md` (Decision section confirmed silent on styling)
+
+**Tools / commands used:** `Bash` (`grep`, `tail`, `wc`), `Read`, `Write`, `Edit`.
+
+**Files created:**
+- `design_docs/project_issues/adr006-rail-half-implemented-no-css.md` — opens the half-implementation as a tracked architectural question with three resolution paths (amend ADR-006, draft ADR-008, defer to TASK-003) and a non-binding recommendation.
+- `.claude/skills/ui-task-scope/SKILL.md` — UI delivery completeness guardrails (created earlier this turn).
+- `.claude/skills/authority-state-check/SKILL.md` — cross-authority state coherence guardrails (created earlier this turn).
+- `.claude/skills/test-honesty-check/SKILL.md` — test-honesty failure-mode detection (created earlier this turn).
+- `.claude/skills/audit-append-only/SKILL.md` — audit append-only discipline (created earlier this turn).
+
+**Files modified:**
+- `design_docs/audit/TASK-002-chapter-navigation-grouped-by-designation.md` — header `Status` flipped to `Blocked — half-implemented`; `Current phase` flipped to `blocked`; Human-gates row added; this Run 012 entry appended.
+- Orchestrator memory entry `feedback_ui_tasks_need_browser_verify.md` reshaped to orchestrator-only verify discipline (the agent-facing rules moved to `ui-task-scope` skill).
+
+**Files deleted:** none.
+
+**Decisions surfaced (as pointers):**
+- New project issue: `design_docs/project_issues/adr006-rail-half-implemented-no-css.md`. Three resolution paths enumerated. Orchestrator's non-binding recommendation: Path 1 (amend ADR-006 to scope CSS) — cleanest from "ADR-006 is the complete record" perspective, follows `authority-state-check` AS-1's allowed `Accepted → Proposed → re-Accept` amendment cycle.
+- Working tree preserved (no revert). 42 files staged for TASK-002 carry forward.
+
+**Working-tree state at this run:**
+- 42 files staged. 158 tests pass. ADR-005, ADR-006, ADR-007 all `Accepted` on disk and reflected in `architecture.md` Accepted ADRs table.
+- Rail class names exist in templates with no corresponding CSS rules in any project CSS file.
+- TASK-002 cannot commit as "complete" until the new project_issue resolves.
+
+**Leaks / pushback raised:**
+- No `MANIFEST TENSION:`, no `> NEEDS HUMAN:` (the issue is decision-tree-shaped; the human can pick a path).
+- Orchestrator self-flagged Run 009's verify-pass claim as a category error; correction recorded above per `audit-append-only` AA-4 (corrections live outside prior run entries).
+
+**Tests / conformance / verification results:**
+- pytest at this run: not re-run; remains at `158 passed` from Run 009. The half-implementation is not a test failure — it is a feature failure the test suite cannot catch (the gap that motivated `test-honesty-check` TH-5 and `ui-task-scope` UI-4).
+- Conformance walk: not re-run; remains at MC-3 PASS / MC-6 PASS from Run 007.
+- End-to-end: re-evaluated by human in actual browser. **FAIL** — page is unstyled.
+
+**Output summary:**
+TASK-002 re-blocked at the post-review boundary. ADR-006's navigation rail mechanism is implemented but its styling deliverable is missing entirely; no CSS rules exist for any of the rail's class names. Missed across the workflow: architect (ADR didn't scope CSS), implementer (templates without rules), reviewer (no rendered-page walk), orchestrator (verify on `curl`). Project_issue opened with three resolution paths; recommendation is amend ADR-006 (Path 1). Process artifacts created in response: 4 new skills covering UI delivery, authority state, test honesty, audit append-only — plus a reshaped orchestrator memory entry. TASK-002 working tree preserved; commit gated on project_issue resolution. Next session resumes by picking a path from the new project_issue (or `/next` will see it surfaced).

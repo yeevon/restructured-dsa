@@ -34,3 +34,6 @@ env/
 
 # Claude Code local-only settings
 .claude/settings.local.json
+
+# Playwright test artifacts (last-run screenshots, traces) — ADR-010
+tests/playwright/artifacts/

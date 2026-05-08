@@ -18,6 +18,9 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-mock",
+    "pytest-playwright>=0.4.0",
+    "playwright>=1.40.0",
+    "requests>=2.28.0",
 ]
 
 [tool.pytest.ini_options]
@@ -25,3 +28,15 @@ markers = [
     "task(id): tag tests with the task ID that introduced them",
 ]
 testpaths = ["tests"]
+
+# Playwright configuration per ADR-010:
+# - Default browser: Chromium
+# - Screenshots: on (one per test for human review of last run)
+# - Traces: retain-on-failure (for debugging)
+# - Video: retain-on-failure (not default-on; see ADR-010)
+# - Artifact directory: tests/playwright/artifacts/ (gitignored per ADR-010)
+addopts = [
+    "--screenshot=on",
+    "--output=tests/playwright/artifacts",
+    "--tracing=retain-on-failure",
+]
