@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} — CS 300 Lecture</title>
+  <link rel="stylesheet" href="/static/lecture.css">
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$']],
+        displayMath: [['\\[', '\\]']],
+        processEscapes: true
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</head>
+<body>
+  <article class="lecture">
+
+    <header class="lecture-header">
+      <span class="designation-badge designation-{{ designation | lower }}">{{ designation }}</span>
+      <h1 class="lecture-title">{{ title }}</h1>
+    </header>
+
+    {% if pre_section_html %}
+    <div class="lecture-intro">
+      {{ pre_section_html | safe }}
+    </div>
+    {% endif %}
+
+    {% for section in sections %}
+    <section id="{{ section.fragment }}">
+      <h2 class="section-heading">{{ section.heading | safe }}</h2>
+      <div class="section-body">
+        {{ section.body_html | safe }}
+      </div>
+    </section>
+    {% endfor %}
+
+  </article>
+</body>
+</html>

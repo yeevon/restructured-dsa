@@ -40,7 +40,7 @@ When invoked with a task:
    and stop. Do not write tests against the conflicting interpretation.
 4. **Critical pass on the ACs.** Before writing tests:
    - For each AC, ask: "if my tests pass, does that PROVE the user-visible outcome the AC describes is achieved?" If a test could trivially pass while the user-visible outcome is still broken, the AC is weak.
-   - Look for failure modes the ACs don't explicitly cover but that you can predict from the task's domain (edge cases, batch behavior across many inputs, adversarial inputs, position-in-document effects, empty/minimal cases, stability/determinism).
+   - Walk the **coverage checklist** below for each AC and each ADR commitment.
    - If any AC reads as "render X" with no structural assertion about WHAT X looks like, that's weak — happy-path tests against rendering are nearly worthless.
    - If you spot weak ACs, output:
      ```
@@ -50,6 +50,15 @@ When invoked with a task:
      Stronger AC I'd write: <better assertion>
      ```
      Then write tests against your stronger interpretation AND output `ASSUMPTION: <what you assumed>`. The user can override by amending the task.
+
+4a. **Coverage checklist (mandatory; document the result in the audit run entry).** For each AC and each ADR commitment, brainstorm tests in these four categories *before* declaring tests complete. Do not wait to be sent back for a second pass.
+
+   - **Boundary.** Values at the limits of accepted ranges. Off-by-one neighbors of any numeric rule (if an ADR pins "Chapter 1–6 Mandatory, 7+ Optional," test 1, 6, 7 explicitly — not just 1). First and last item in any iteration. Min/max sizes. Threshold flips.
+   - **Edge.** Unusual-but-valid inputs that the happy path glosses over. Empty input, single-element input, duplicates, unicode/special characters, deeply nested structures, inputs that exercise recovery logic, "the whole real corpus" rather than a synthetic minimal example. Position-in-document effects (first vs middle vs last occurrence of a parsed element).
+   - **Negative.** Invalid inputs and what the system MUST do in response. Malformed IDs, missing files, wrong types, path traversal, wrong HTTP methods, unclosed structures, contract violations. Pin the expected response (status code, exception type, log signature) in the test docstring so the implementer has a target.
+   - **Performance.** When an AC implies "renders the whole chapter," "iterates the whole set," or otherwise touches scale, include at least one assertion that catches pathological scaling. A generous wall-clock budget against the real fixture is fine — the goal is to catch O(n²) regressions and runaway recursion, not to micro-benchmark. Skip with reason if the task has no scale signal (e.g., "single fixed-size input, no scaling surface").
+
+   Record the result in the audit run entry under `**Coverage matrix:**`, one line per category, naming covered tests OR the explicit reason for skipping. Skips are allowed; silent omissions are not.
 
 5. **Reading rules** — what you may and may not read:
    - ✅ MAY read: existing test files anywhere; `tests/conftest.py`; `tests/fixtures/`; the `__init__.py` of any module; public function/route signatures; data-model class definitions (the public API contract); ADR files. These are public boundary surface — you need them to write tests that compile.
@@ -82,6 +91,11 @@ When invoked with a task:
    **Files created:** <test paths>
    **Files modified:** <pyproject.toml if marker added; tests/conftest.py if extended; or "none">
    **Tests added:** <test name → AC mapping, one line each>
+   **Coverage matrix:**
+   - Boundary: <covered tests, or "skipped: <reason>">
+   - Edge: <covered tests, or "skipped: <reason>">
+   - Negative: <covered tests, or "skipped: <reason>">
+   - Performance: <covered tests, or "skipped: <reason>">
    **Pytest red result:** Collected: <N>, Failing: <M>, Passing: <K>
    **Assumptions:** <list ASSUMPTION lines, or "none">
    **CANNOT TEST:** <list AC numbers, or "none">
@@ -94,9 +108,10 @@ When invoked with a task:
 ## Test design priorities (in order)
 
 1. **One test per AC.** Given/When/Then maps directly. If you can't write a meaningful test for an AC, output `> CANNOT TEST AC-N: <reason>` and stop on that AC — do not write a vacuous test to satisfy the count.
-2. **Failure-mode tests beyond the ACs.** Edge cases, boundaries, batch behavior across the entire affected set (not one instance), determinism/stability across two runs.
-3. **Negative tests.** What MUST NOT happen. (Example: "no raw LaTeX token appears anywhere in rendered output of any of the N callouts" beats "the rendered HTML contains the word 'callout'".)
-4. **End-to-end where the AC is end-to-end.** If the AC describes a user-visible outcome (a page renders correctly, a route returns 200), test the end-to-end path, not an internal function the user never touches.
+2. **Coverage-checklist tests (boundary, edge, negative, performance).** Per step 4a. These are not optional add-ons; happy-path-only suites are sent back. Skips are allowed only with an explicit reason in the coverage matrix.
+3. **Negative-outcome assertions.** What MUST NOT happen. ("No raw LaTeX token appears anywhere in rendered output of any of the N callouts" beats "the rendered HTML contains the word 'callout'.") Often combines with category 2.
+4. **Batch-set assertions over the whole affected set.** If the AC is "all N items render correctly," the test iterates over all N, not item 0. Determinism/stability across two runs belongs here.
+5. **End-to-end where the AC is end-to-end.** If the AC describes a user-visible outcome (a page renders correctly, a route returns 200), test the end-to-end path, not an internal function the user never touches.
 
 ## Anti-patterns — DO NOT do these
 

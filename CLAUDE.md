@@ -58,8 +58,8 @@ The reading agent does not edit the offending file. The owner does (architect fo
 
 Use the commands defined by the repository config when present. If no command is configured yet, surface that as a project setup gap. Do not invent tooling.
 
-- Run: `<dev command>`
-- Test: `<project test command>`
+- Run: `uvicorn app.main:app --host 127.0.0.1 --port 8000`
+- Test: `python3 -m pytest tests/`
 - Lint: `<project lint command>`
 - Type check: `<project type-check command>`
 
