@@ -56,14 +56,16 @@ The reading agent does not edit the offending file. The owner does (architect fo
 
 ## Commands
 
+Use the commands defined by the repository config when present. If no command is configured yet, surface that as a project setup gap. Do not invent tooling.
+
 - Run: `<dev command>`
-- Test: `pytest`
-- Lint: `ruff check --fix && ruff format`
-- Type check: `mypy cs300/`
+- Test: `<project test command>`
+- Lint: `<project lint command>`
+- Type check: `<project type-check command>`
 
 ## Conventions
 
-These are workspace conventions, not architecture. Architectural patterns live in `design_docs/architecture.md`. Do not infer patterns from examples in this file.
+These are workspace conventions, not architecture. Architectural patterns live in Accepted ADRs. `design_docs/architecture.md` may summarize them only when derived from Accepted ADRs. Do not infer patterns from examples in this file.
 
 - Public functions get type hints; private helpers can skip them when types add no information.
 - Commit format: `<type>(<scope>): <description>`. Scopes derive from the active task; do not invent scopes that aren't reflected in the codebase.
@@ -90,7 +92,15 @@ Every task gets an audit file at `design_docs/audit/TASK-NNN-<slug>.md`. The aud
 - Pushback / escalations / `ARCHITECTURE LEAK:` blocks raised.
 - Test, conformance, and verification results.
 
-**What the audit file may NOT contain:** any architectural claim, any tier-1/tier-2 instruction, any new authority. Agents do not consult the audit log to decide what to do — they consult the manifest, ADRs, the task file, and the conformance skill. The audit log is a record of past work, not a plan or a rulebook.
+**What the audit file may NOT do:** introduce architectural authority, record a new architectural decision as binding, or act as a rulebook.
+
+The audit file may quote or reference architectural claims only as evidence:
+
+- `ADR-NNN decided <short label>`
+- `ARCHITECTURE LEAK raised against <file>`
+- `Reviewer found decision in code without ADR`
+
+Agents do not consult the audit log to decide what to do. They consult the manifest, Accepted ADRs, the task file, and the conformance skill. If the audit log and an authoritative artifact disagree, the authoritative artifact wins.
 
 ### Audit file template
 
@@ -120,7 +130,13 @@ Per-agent run-entry shapes are defined in each agent's prompt. The general shape
 
 ## Pushback protocol (every agent, every layer)
 
-The project flows: **MANIFEST → architecture.md → ADRs → project_issues → tasks → tests → code**. Each layer is a contract for the next layer to satisfy. Each agent reads the upstream layers and produces the next layer.
+The project flows: **MANIFEST → Accepted ADRs → tasks → tests → code**. Each layer is a contract for the next layer to satisfy. Each agent reads the upstream layers and produces the next layer.
+
+Supporting records (not authority layers):
+
+- `design_docs/architecture.md` summarizes Accepted ADRs.
+- `design_docs/project_issues/` tracks unresolved architecture questions.
+- `design_docs/audit/` records what happened.
 
 The protocol is bidirectional. Every agent that reads an artifact also critiques it.
 
@@ -136,6 +152,7 @@ The protocol is bidirectional. Every agent that reads an artifact also critiques
 | architecture.md, ADRs, project_issues, tasks | Architect agent (during `/next` and `/design`) |
 | tests | test-writer agent (during `/implement`) |
 | code | implementer agent |
+| `design_docs/audit/TASK-NNN-<slug>.md` | Shared operational record: agents append their own run entries; human updates the Human gates table |
 
 When an agent surfaces a flaw, the *owner* is the one who edits. The agent that found the flaw does not edit upstream artifacts itself.
 
