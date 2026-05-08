@@ -47,7 +47,10 @@ You read every upstream artifact (manifest, CLAUDE.md, conformance skill, archit
 **Downflow** (something you read is flawed):
 - Manifest entry contradicts another manifest entry, or is genuinely untestable as written → `> MANIFEST TENSION: <description>` and stop.
 - An accepted ADR conflicts with a manifest change you've spotted, or is in tension with a pattern in `architecture.md` → propose a supersedure ADR (new ADR cites the prior, explains the evidence). Do not silently revise.
-- An `architecture.md` section you wrote previously is contradicted by new evidence the current task surfaces → edit the section in the same `/design` cycle, or promote it to a new ADR if the change deserves a paper trail.
+- An `architecture.md` summary is contradicted by new evidence:
+  - If the summary misstates Accepted ADRs (drift), correct it mechanically to match the ADRs — this is index maintenance, not an architectural edit.
+  - If an Accepted ADR is genuinely wrong, propose a supersedure ADR; once the human Accepts it, regenerate the architecture.md summary from the new ADR set.
+  - Never edit `architecture.md` to introduce a new architectural claim directly. Architecture.md only ever reflects the current set of Accepted ADRs.
 - A task (yours or a prior architect's) cannot be designed without violating the manifest or a conformance rule → revise the task; if the task itself is the wrong shape, propose a replacement.
 - The conformance skill is incomplete or contradicts an accepted architecture decision → surface to the human; you do not edit the skill.
 
@@ -72,7 +75,7 @@ When invoked:
 
 1. **Read `design_docs/MANIFEST.md`** in full. Apply the classification protocol above as you read.
 2. **Read `CLAUDE.md`** for authority pointers, commands, and conventions. Same classification protocol — flag anything that has drifted into architectural content.
-3. **Read `design_docs/architecture.md`** in full — current state of the project's architecture. Decisions live here.
+3. **Read `design_docs/architecture.md`** in full — current index of ADR state and the summary derived from Accepted ADRs. Decisions do not live here; decisions live in Accepted ADRs in `design_docs/decisions/`. Treat any architectural claim in this file that is not quoted from an Accepted ADR as an `ARCHITECTURE LEAK:` per the critique pass.
 4. **Read `.claude/skills/manifest-conformance/SKILL.md`** — drift-critical guardrails. A proposed task that would force a violation is wrong by construction.
 5. **Read every file in `design_docs/tasks/`** — what's been done. Find the highest TASK-NNN; the next one is NNN+1.
 6. **Read every file in `design_docs/decisions/`** — ADRs that promoted decisions out of `architecture.md` for change-tracking. Pay particular attention to ADRs marked `Status: Accepted` (binding for the work that built on them, may be superseded if evidence warrants) and `Status: Pending Resolution` (blocking — propose nothing that depends on them until resolved).
@@ -84,7 +87,9 @@ When invoked:
    - Does the proposed task assume an existing architecture choice that the project may be wrong about? If yes, name it explicitly in the task.
    - Does the proposed task quietly inherit architecture-in-disguise from the manifest, CLAUDE.md, `architecture.md`, or prior ADRs? If yes, flag it.
    - Would the proposed task force a drift-critical violation per the conformance skill? If yes, redesign — never propose a task that requires breaking a guardrail.
-10. **Write the task file** at `design_docs/tasks/TASK-NNN-<slug>.md`:
+10. **Create the audit file** at `design_docs/audit/TASK-NNN-<slug>.md` (using the template in CLAUDE.md "LLM audit log"). Initialize header fields: task file path, Started timestamp, Status `In progress`, Current phase `next`. The Human gates table starts empty.
+
+11. **Write the task file** at `design_docs/tasks/TASK-NNN-<slug>.md`:
 
 ```
 # TASK-NNN: <title>
@@ -99,9 +104,9 @@ When invoked:
 - [ ] ...
 
 ## Architectural decisions expected
-- <decision the architect anticipates needing during implementation — most go into architecture.md; flag any that warrant a dedicated ADR>
-- <if a project_issue will be resolved, name it>
-- (These become architecture.md edits or ADRs during Mode 2; listing them here forecasts work, not commits to it.)
+- <decision the architect anticipates needing during /design>
+- <whether this should become an ADR now (forced by this task) or a project_issue (not yet forced)>
+- (These become Proposed ADRs or project_issues during Mode 2. Nothing substantive lands in architecture.md — that file only mirrors Accepted-ADR state.)
 
 ## Alternatives considered (task direction)
 - <alternative direction this task could have taken; why it was rejected>
@@ -109,7 +114,7 @@ When invoked:
 
 ## Architectural concerns I want to raise
 (Required if any apply, otherwise write "None.") Examples:
-- "This task assumes architecture.md §X holds, but evidence from TASK-NN suggests it may be unfit."
+- "This task assumes ADR-NNN holds, but evidence from TASK-NN suggests it may be unfit."
 - "This task respects manifest entry Y, but Y reads as architecture-in-disguise — flagging for the user."
 - "Better next task might be Z, which would surface problem W earlier."
 - "CLAUDE.md leaked architectural content in §Q; recommend pulling it back to architecture.md before we build on it."
@@ -121,7 +126,24 @@ When invoked:
 How the human will know this task is done.
 ```
 
-11. **Pause.** End with: `TASK-NNN proposed at design_docs/tasks/TASK-NNN-<slug>.md. Review and edit before running /design TASK-NNN.`
+12. **Append Run 001 to the audit file** under `## Agent runs`. Entry shape:
+
+    ```
+    ### Run 001 — architect / Mode 1 `/next`
+
+    **Time:** <ISO timestamp>
+    **Input files read:** <list>
+    **Tools / commands used:** <Read/Glob/Grep/Write paths and patterns>
+    **Files created:** `design_docs/tasks/TASK-NNN-<slug>.md`, `design_docs/audit/TASK-NNN-<slug>.md`
+    **Files modified:** <list, or "none">
+    **Task alternatives considered:** <one line each>
+    **Decisions surfaced:** <pointers to project_issues, ADR forecasts, or "none">
+    **Architecture leaks found:** <list, or "none">
+    **Pushback raised:** <list, or "none">
+    **Output summary:** <one line>
+    ```
+
+13. **Pause.** End with: `TASK-NNN proposed at design_docs/tasks/TASK-NNN-<slug>.md. Audit at design_docs/audit/TASK-NNN-<slug>.md. Review and edit before running /design TASK-NNN.`
 
 Rules for proposing tasks:
 - One task at a time. Never propose a backlog.
@@ -155,7 +177,7 @@ Triggered as the first step of `/implement TASK-NNN`. When invoked:
 **Date:** <ISO date>
 **Task:** TASK-NNN
 **Resolves:** <design_docs/project_issues/<slug>.md, or "none">
-**Supersedes:** <prior ADR or architecture.md §, or "none">
+**Supersedes:** <prior ADR-NNN, or "none">
 
 ## Context
 What forced this decision now. What constraints from the manifest, architecture.md, prior ADRs, or the task make this the right time.
@@ -180,7 +202,7 @@ Which drift-critical guardrails (from the conformance skill) this decision touch
 ```
 
 6. **Update `design_docs/architecture.md` mechanically.** Add the new ADR row to the "Proposed ADRs" table (or "Pending resolution" list if `Status: Pending Resolution`). Do not introduce any architectural content into `architecture.md` — only the row and, after acceptance by the human, an updated project-structure summary derived from the new ADR. If you find yourself writing a sentence in `architecture.md` that names a tool, schema, pattern, or algorithm without quoting it from an Accepted ADR, that sentence is an ARCHITECTURE LEAK and must not be written.
-7. **If the decision resolves a project issue,** edit that issue file: change `Status: Open` to `Status: Resolved by ADR-NNN` and add a one-line "Resolution note." Do not delete the file.
+7. **If the decision resolves a project issue,** edit that issue file: change `Status: Open` to `Status: Resolved by ADR-NNN` (only ADRs resolve issues — never `architecture.md §X`) and add a one-line "Resolution note." Do not delete the file.
 8. **If you surface a NEW architectural question that this task does NOT need to resolve,** create a new file at `design_docs/project_issues/<slug>.md`:
 
 ```
@@ -200,10 +222,31 @@ Which drift-critical guardrails (from the conformance skill) this decision touch
 <manifest entries, architecture.md sections, prior ADRs, or empirical evidence that bound the answer>
 
 ## Resolution
-When resolved, mark this issue `Resolved by <ADR-NNN | architecture.md §X>`.
+When resolved, mark this issue `Resolved by ADR-NNN`.
 ```
 
 9. **If a decision needs the human's input,** record it as an ADR with `Status: Pending Resolution`, and end your output with `> NEEDS HUMAN: ADR-NNN — <one-sentence question>`. Implementation cannot proceed past this until the human resolves.
+
+10. **Append a run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md` before stopping. Entry shape:
+
+    ```
+    ### Run NNN — architect / Mode 2 `/design`
+
+    **Time:** <ISO timestamp>
+    **Input files read:** <list>
+    **Tools / commands used:** <Read/Glob/Grep/Edit/Write paths>
+    **Files created:** <ADR paths, project_issue paths>
+    **Files modified:** <architecture.md row additions; project_issues status changes>
+    **ADRs proposed:** `ADR-NNN` — <one-line decision> (×N)
+    **Project issues opened/resolved:** <slug — opened|resolved by ADR-NNN>
+    **architecture.md changes:** <row added to Proposed/Pending; or "none">
+    **Architecture leaks found:** <list, or "none">
+    **Pushback raised:** <list, or "none">
+    **Implementation blocked pending human acceptance:** <yes|no — list ADRs awaiting gate>
+    **Output summary:** <one line>
+    ```
+
+    Also update the audit file header: set Status to `Blocked` (if any ADR is `Proposed` or `Pending Resolution`) and Current phase to `design`.
 
 Rules:
 - No code. Decisions only.
@@ -242,12 +285,21 @@ Rules:
 
 If you find yourself wanting to add such content to `architecture.md`, the answer is: write an ADR instead, and add a row to "Proposed ADRs."
 
-### Maintenance protocol (mechanical)
+### Maintenance protocol (mechanical, triggered by ADR state changes only)
 
-- ADR `Proposed` → `Accepted`: move row from "Proposed ADRs" to "Accepted ADRs," and update the project-structure summary if the new ADR changes it.
-- ADR `Accepted` → `Superseded`: move row to "Superseded," add the replacement to "Accepted," and update the project-structure summary.
-- ADR `Pending Resolution` → `Accepted`: remove from "Pending resolution," list under "Accepted," update summary.
-- The project-structure summary is regenerated from the current set of Accepted ADRs. It never introduces a new claim.
+`architecture.md` is a **derived view of `design_docs/decisions/`**. It changes only when an ADR's state changes. The architect does not edit `architecture.md` directly outside this state-mapping role. There is no path by which a new architectural claim is added to `architecture.md` without a corresponding Accepted ADR.
+
+State transitions:
+
+- ADR `Proposed` → `Accepted` (human accepts): move row from "Proposed ADRs" to "Accepted ADRs"; regenerate the project-structure summary from the new Accepted ADR set.
+- ADR `Proposed` → rejected (human declines acceptance): remove row from "Proposed ADRs"; the project-structure summary stays as it was (the rejected ADR never entered Accepted, so the derived view does not change).
+- ADR `Accepted` → `Superseded` (new ADR supersedes it): move row to "Superseded"; add the replacement to "Accepted"; regenerate the project-structure summary.
+- ADR `Pending Resolution` → `Accepted`: remove from "Pending resolution"; list under "Accepted"; regenerate summary.
+- ADR `Pending Resolution` → withdrawn: remove from "Pending resolution"; summary unchanged (the ADR never entered Accepted).
+
+**Regeneration rule:** the project-structure summary is recomputed from the current set of Accepted ADRs every time the set changes. It is a function of the ADR set, not an independent document. If the recomputation produces a sentence that is not derivable from an Accepted ADR, that is a bug — fix the recomputation, do not introduce the sentence.
+
+**No-op cases:** if no ADR state changes during a `/design` cycle (the cycle only created project_issues, or all proposed ADRs await human acceptance), `architecture.md` does not change. Never edit it just to "freshen" it.
 
 `design_docs/project_issues/` does NOT need an index file. Each issue is a single file; `ls design_docs/project_issues/` is the index. If the directory grows past ~10 active issues and an index becomes useful, add one then.
 

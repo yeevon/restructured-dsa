@@ -15,12 +15,13 @@ Read in this order before any task:
 
 `.md` files are not automatically authoritative. Before treating a markdown statement as binding, classify the file:
 
-| Tier | Files | Allowed to introduce architecture? |
-|---|---|---|
-| 1. Binding authority | `MANIFEST.md`, Accepted ADRs in `design_docs/decisions/`, `design_docs/architecture.md` (index only) | MANIFEST: only product behavior. ADRs: yes. architecture.md: **no** — must cite an Accepted ADR. |
-| 2. Operational instruction | `CLAUDE.md`, `.claude/commands/*.md`, `.claude/agents/*.md`, `.claude/skills/*/SKILL.md` | No. Process and conventions only. |
-| 3. Proposed work | task files, Proposed ADRs, files in `project_issues/` | No (issues raise questions; tasks request work; Proposed ADRs await human gate). |
-| 4. Reference / context | notes, plans, scratch, conversation exports, drafts | No. |
+| Tier | Files | Allowed to introduce architecture? | Authority |
+|---|---|---|---|
+| 1. Binding authority | `MANIFEST.md`, Accepted ADRs in `design_docs/decisions/`, `design_docs/architecture.md` (index only) | MANIFEST: only product behavior. ADRs: yes. architecture.md: **no** — must cite an Accepted ADR. | Yes |
+| 2. Operational instruction | `CLAUDE.md`, `.claude/commands/*.md`, `.claude/agents/*.md`, `.claude/skills/*/SKILL.md` | No. Process and conventions only. | Process only |
+| 3. Proposed work | task files, Proposed ADRs, files in `project_issues/` | No (issues raise questions; tasks request work; Proposed ADRs await human gate). | None until accepted |
+| 4. Reference / context | notes, plans, scratch, conversation exports, drafts | No. | None |
+| 5. Operational record / evidence | `design_docs/audit/TASK-NNN-<slug>.md` | No. May record decisions only as pointers to ADRs / tasks / reviewer findings. | None |
 
 **No agent may treat a markdown statement as architecture unless it is backed by:**
 - the manifest (for product behavior, scope, glossary, non-goals), or
@@ -66,6 +67,56 @@ These are workspace conventions, not architecture. Architectural patterns live i
 
 - Public functions get type hints; private helpers can skip them when types add no information.
 - Commit format: `<type>(<scope>): <description>`. Scopes derive from the active task; do not invent scopes that aren't reflected in the codebase.
+
+## LLM audit log
+
+Every task gets an audit file at `design_docs/audit/TASK-NNN-<slug>.md`. The audit file is an **operational record, not architecture**. It does not create authority. It records what agents did, what files they touched, what decisions they surfaced, what tools/commands they ran, and what human gates occurred.
+
+**Append-only during a task.** Agents may append new run entries; they must not rewrite earlier entries except to correct an obvious path/typo, and any such correction is itself an appended note (not an in-place rewrite).
+
+**Lifecycle of the audit file:**
+
+- `/next` (architect Mode 1) **creates** the file from the template below and appends Run 001.
+- `/design` (architect Mode 2) **appends** Run NNN before stopping.
+- `/implement` **appends** a run entry after each phase: test-writer, implementer, verify.
+- The reviewer **appends** before its final output.
+- The human (or whichever orchestrator advances the workflow) **updates the Human gates table** at gate transitions (task accepted, ADRs accepted, tests reviewed, commit reviewed).
+
+**What the audit file may record:**
+
+- Files read / created / modified / deleted.
+- Tools and commands invoked.
+- Decisions surfaced — only as pointers to ADR-NNN, project_issues/<slug>, or reviewer findings. Never as a place to record an architectural decision directly.
+- Pushback / escalations / `ARCHITECTURE LEAK:` blocks raised.
+- Test, conformance, and verification results.
+
+**What the audit file may NOT contain:** any architectural claim, any tier-1/tier-2 instruction, any new authority. Agents do not consult the audit log to decide what to do — they consult the manifest, ADRs, the task file, and the conformance skill. The audit log is a record of past work, not a plan or a rulebook.
+
+### Audit file template
+
+```
+# LLM Audit — TASK-NNN: <title>
+
+**Task file:** `design_docs/tasks/TASK-NNN-<slug>.md`
+**Started:** <ISO timestamp>
+**Status:** In progress | Blocked | Implemented | Reviewed | Committed
+**Current phase:** next | design | test | implement | verify | review
+
+---
+
+## Human gates
+
+| Time | Gate | Result | Notes |
+|---|---|---|---|
+
+---
+
+## Agent runs
+
+(runs are appended in order; see per-agent prompts for the entry shape each agent appends)
+```
+
+Per-agent run-entry shapes are defined in each agent's prompt. The general shape is: timestamp; input files read; tools/commands used; files created/modified/deleted; decisions surfaced (as pointers); leaks/pushback raised; tests/conformance/verification results; output summary.
 
 ## Pushback protocol (every agent, every layer)
 

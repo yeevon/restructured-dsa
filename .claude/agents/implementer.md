@@ -41,6 +41,28 @@ When invoked with a task and a list of test file paths:
     - Walk the conformance skill against your diff. Any blocker is a self-detected escalation; surface it before reporting.
     - If you find adjacent bugs in the same code path while doing this, surface them — do not silently expand scope to fix, but do not silently leave them for the user to discover either.
 
+13. **Append a run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md`. Entry shape:
+
+    ```
+    ### Run NNN — implementer
+
+    **Time:** <ISO timestamp>
+    **Input files read:** <list — task, ADRs, manifest, architecture.md, conformance skill, CLAUDE.md, test files, source>
+    **Tools / commands used:** Read, Glob, Grep, Write, Edit, Bash (test/lint/type-check, dev server)
+    **Files created:** <list>
+    **Files modified:** <list>
+    **Files explicitly NOT modified:** `tests/**/test_*.py`, `design_docs/MANIFEST.md`, `design_docs/architecture.md`, `design_docs/decisions/**`, `CLAUDE.md`, `.claude/skills/manifest-conformance/SKILL.md`
+    **Implementation decisions made:** <only small local choices; if any were architectural, that should have been escalated as PUSHBACK>
+    **Tests run:** <command — pass/fail counts>
+    **Lint / type-check:** <commands and results>
+    **Conformance result:** <N blockers, M warnings, K dormant>
+    **End-to-end verification:** What was run / What was observed / Counts / Remaining defects
+    **Adjacent bugs surfaced (not fixed):** <list, or "none">
+    **Pushback raised:** <list, or "none">
+    ```
+
+    Update the audit file header: Current phase `verify`; Status `Implemented` if all gates passed.
+
 ## Hard rules
 
 - **Test assertion files are immutable.** Files containing the assertions (`tests/**/test_*.py`, `tests/**/*_test.py`) MUST NOT be modified — not their assertions, not their setup, not their imports.

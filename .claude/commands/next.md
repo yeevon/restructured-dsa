@@ -18,6 +18,8 @@ The proposed task must include:
 - An "Alternatives considered (task direction)" section with at least two materially different alternatives.
 - An "Architectural concerns I want to raise" section that names any architecture-in-disguise inheritance, any flaws spotted in `architecture.md`, any leaks spotted in `CLAUDE.md`, or "None."
 
-After it finishes, show me the path. Pause for me to review and edit before I run `/design TASK-NNN`.
+Architect also creates the task audit file at `design_docs/audit/TASK-NNN-<slug>.md` (per CLAUDE.md "LLM audit log") and appends Run 001 to it before stopping.
+
+After it finishes, show me both paths (task file + audit file). Pause for me to review and edit before I run `/design TASK-NNN`. When I accept the task, I add a row to the audit file's "Human gates" table (`Task reviewed | accepted | <notes>`).
 
 If the architect outputs `MANIFEST TENSION:` or `PRIMARY OBJECTIVE COMPLETE:`, surface it and stop.

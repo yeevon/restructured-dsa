@@ -20,17 +20,29 @@ Each ADR (when written) must include:
 - A "Manifest reading" section that names which manifest entries it read as binding for this decision and which it flagged as architecture-in-disguise (for reporting only — flagging does not authorize routing around the manifest).
 - A "Conformance check" section listing which drift-critical guardrails (from the conformance skill) the decision touches and how it stays compliant.
 
+Architect also appends a run entry to the task audit file at `design_docs/audit/TASK-NNN-<slug>.md` before stopping (per CLAUDE.md "LLM audit log"), recording: files read, tools/commands, ADRs created, project_issues opened/resolved, architecture.md rows added, leaks found, pushback raised, whether implementation is blocked pending human acceptance.
+
 When it finishes, show me:
 - Each new ADR file path and a one-line summary of what each decides.
 - The `architecture.md` row(s) added (Proposed ADRs / Pending resolution).
+- The audit file path with a pointer to the new run entry.
 - Any pushback the architect raised against the apparent user preference.
 - Any `ARCHITECTURE LEAK:` blocks the architect found while reading the inputs.
 
 STOP. Do not run tests or implementation. I will:
 1. Review each new ADR file.
 2. Edit if needed.
-3. Mark `Status: Accepted` in each ADR file.
-4. Move the row in `architecture.md` from "Proposed ADRs" to "Accepted ADRs" (and update the project-structure summary if the new ADR changes it). The architect can perform this mechanical move on a follow-up `/design` invocation, but never alters the ADR's substantive content.
-5. Run `/implement $ARGUMENTS`.
+3. Mark `Status: Accepted` in each ADR file (or reject — see below).
+4. Update `architecture.md` to reflect the new ADR state. Either:
+   - ask the architect to perform the mechanical state transition (move the row from "Proposed ADRs" to "Accepted ADRs," regenerate the project-structure summary from the current Accepted ADR set), **or**
+   - perform the mechanical move myself.
+
+   **No substantive architecture may be added to `architecture.md` during this move.** It only ever mirrors the current Accepted ADR set.
+
+5. If I reject an ADR (do not mark Accepted): the architect removes the row from "Proposed ADRs" in `architecture.md` and regenerates the project-structure summary from the unchanged Accepted ADR set. The rejected ADR file remains on disk for history, with a note explaining why it was rejected.
+
+6. Add a row to the audit file's "Human gates" table for each ADR I gate: `<timestamp> | ADR-NNN reviewed | accepted | <notes>` (or `rejected`). Update the audit header `Status` to `In progress` once all task ADRs are Accepted and architecture.md reflects them.
+
+7. Run `/implement $ARGUMENTS` only after every ADR for this task is `Accepted` and `architecture.md` reflects that.
 
 If architect outputs `MANIFEST TENSION:`, `> NEEDS HUMAN:`, or `ARCHITECTURE LEAK:`, surface to me and stop.

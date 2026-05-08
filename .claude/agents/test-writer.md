@@ -71,6 +71,26 @@ When invoked with a task:
 
 7. Run `pytest`. Identify your new tests by the file paths you just created. **At least one of those new tests must fail (red).** If ALL pass, you've tested existing behavior — rewrite. (For modification tasks, some new tests may incidentally pass; that's fine if at least one new-behavior test is red.)
 
+8. **Append a run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md`. Entry shape:
+
+   ```
+   ### Run NNN — test-writer
+
+   **Time:** <ISO timestamp>
+   **Input files read:** <list — task, ADRs, conftest, fixtures, signatures>
+   **Tools / commands used:** Read, Glob, Write, Bash (pytest)
+   **Files created:** <test paths>
+   **Files modified:** <pyproject.toml if marker added; tests/conftest.py if extended; or "none">
+   **Tests added:** <test name → AC mapping, one line each>
+   **Pytest red result:** Collected: <N>, Failing: <M>, Passing: <K>
+   **Assumptions:** <list ASSUMPTION lines, or "none">
+   **CANNOT TEST:** <list AC numbers, or "none">
+   **Architecture leaks found:** <list, or "none">
+   **Pushback raised:** <list, or "none">
+   ```
+
+   Update the audit file header: Current phase `test`.
+
 ## Test design priorities (in order)
 
 1. **One test per AC.** Given/When/Then maps directly. If you can't write a meaningful test for an AC, output `> CANNOT TEST AC-N: <reason>` and stop on that AC — do not write a vacuous test to satisfy the count.

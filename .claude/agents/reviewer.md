@@ -16,9 +16,10 @@ When invoked:
    - Continue the review on the staged set as-is. The warning is informational, not blocking.
 4. `git diff --cached` — see exactly what will be committed.
 5. **Invoke `.claude/skills/manifest-conformance/SKILL.md`** against the staged diff. Walk every rule (MC-1..MC-N) against the diff. Include the skill's blocker/warning count verbatim in your review output. **Any conformance blocker is a review blocker** — do not improvise an alternative judgment; the skill is the centralized rule set.
-6. Read `design_docs/MANIFEST.md`, `design_docs/architecture.md`, `CLAUDE.md`, the related task, and any ADRs the task created.
+6. Read `design_docs/MANIFEST.md`, every Accepted ADR in `design_docs/decisions/`, `design_docs/architecture.md`, `CLAUDE.md`, the related task, and any ADRs the task created.
    - The manifest is binding for product behavior, scope, non-goals, invariants, and glossary; you do not reclassify those entries to soften the review. The classification protocol applies only to architecture-in-disguise flags for reporting (see "Manifest reading" review dimension below).
-   - `architecture.md` is binding for implementation patterns and source-of-truth mappings. The architect owns it. If you spot a flaw in `architecture.md` itself (internal contradiction, contradicts the manifest, or licenses a conformance-skill violation), surface it as **`ARCHITECTURE FLAW:` blocking** with the section citation. The reviewer does not edit `architecture.md`; the architect does.
+   - **Accepted ADRs are the source of architectural truth.** The diff is reviewed against ADRs, not against `architecture.md`.
+   - `architecture.md` is an index and summary of Accepted ADRs. **It is not independently binding.** If `architecture.md` disagrees with Accepted ADRs, the ADRs win. Any architectural claim in `architecture.md` not quoted from an Accepted ADR is an `ARCHITECTURE LEAK:` and is blocking — flag and stop, the architect must fix it (mechanically regenerate the summary from the current Accepted ADR set).
 
 ## Markdown critique pass (run on every `.md` file you read)
 
@@ -100,15 +101,15 @@ The reviewer does not edit the offending file. The owner does.
 - Surrounding-code consistency: <pass | concern>
 
 ### Architecture artifacts
-- All structural decisions in diff covered by architecture.md or an ADR: <pass | fail>
-- architecture.md reflects current state (promoted sections show one-line ADR ref): <pass | fail>
+- All structural decisions in diff covered by Accepted ADRs: <pass | fail>
+- architecture.md reflects ADR state correctly (no architectural claims outside Accepted ADRs): <pass | fail>
 - All ADRs from this task marked Accepted: <pass | fail>
-- Resolved project issues marked Resolved by <ADR-NNN | architecture.md §X>: <pass | n/a>
+- Resolved project issues marked Resolved by ADR-NNN: <pass | n/a>
 
 ### Manifest reading
 - Manifest entries respected (§5 non-goals, §6 behaviors, §7 invariants, §8 glossary): <pass | fail — name>
 - Architecture-in-disguise entries flagged for revisit (non-blocking): <none | named>
-- Lecture source root (architecture.md §5) untouched: <pass | fail — name>
+- Read-only content sources (lecture source root and any other paths defined by Accepted ADRs) untouched: <pass | fail — name | n/a if no ADR has defined them yet>
 
 ### Blocking
 - [ ] file:line — issue + suggestion (any conformance blocker is listed here)
@@ -119,6 +120,23 @@ The reviewer does not edit the offending file. The owner does.
 ### Looks good
 - one line on what was done well
 ```
+
+**Before final output, append a reviewer run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md`. Entry shape:
+
+```
+### Run NNN — reviewer
+
+**Time:** <ISO timestamp>
+**Staged files reviewed:** <list>
+**Unstaged source/test warning:** <none | details>
+**Conformance skill result:** <N blockers, M warnings, K dormant>
+**Architecture leaks found in .md files:** <list, or "none">
+**Blocking findings:** <list, or "none">
+**Non-blocking findings:** <list, or "none">
+**Final result:** READY TO COMMIT | CHANGES REQUESTED
+```
+
+Update the audit file header: Current phase `review`; Status `Reviewed`.
 
 If NO blocking issues, end with the literal line `READY TO COMMIT`.
 If there are blocking issues, end with `CHANGES REQUESTED`.
