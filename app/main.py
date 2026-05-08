@@ -1,26 +1,31 @@
 """
-ADR-003: FastAPI application — serves GET /lecture/{chapter_id}.
+ADR-003: FastAPI application — serves GET / (landing page) and
+GET /lecture/{chapter_id} (Lecture page).
 
-The route reads content/latex/{chapter_id}.tex (ADR-001), parses it with
-the pylatexenc-based parser (ADR-003), resolves the Mandatory/Optional
-designation (ADR-004), and renders the Jinja2 template.
+ADR-006: GET / returns the grouped Chapter navigation landing page;
+every Lecture page includes the same navigation rail via base.html.j2.
+Both surfaces render nav_groups from discover_chapters() — one source of truth.
 
-MC-6: no write to content/latex/ — the file is opened read-only.
+MC-6: no write to content/latex/ — all files are opened read-only.
 MC-7: no auth, no user_id, no session.
 """
 
 from __future__ import annotations
 
 import pathlib
-import re
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.config import CONTENT_ROOT
-from app.designation import chapter_designation, parse_chapter_number
+from app.discovery import (
+    DuplicateChapterNumber,
+    InvalidChapterBasename,
+    discover_chapters,
+    extract_title_from_latex,
+)
+from app.designation import chapter_designation
 from app.parser import extract_sections, parse_latex, _extract_document_body
 
 # ---- Jinja2 environment ----
@@ -43,7 +48,6 @@ def _get_content_root() -> pathlib.Path:
     Return the lecture source root as a Path.
     Uses app.config.CONTENT_ROOT, which tests may monkeypatch.
     """
-    # Re-import to pick up any test monkeypatching of CONTENT_ROOT
     import app.config as _cfg  # noqa: PLC0415
     return pathlib.Path(_cfg.CONTENT_ROOT)
 
@@ -53,17 +57,23 @@ def _extract_title(latex_text: str) -> str:
     Extract the chapter title from the LaTeX preamble \\title{...} macro.
 
     ADR-003: the renderer may peek at the preamble for the title only.
-    ADR-001: preamble is not Lecture content; only the body is Lecture content.
-    Returns a plain-text title, or a fallback string if not found.
+    Delegates to the shared extract_title_from_latex() (ADR-007: single extraction).
+    Returns a fallback string "Lecture" if not found.
     """
-    m = re.search(r'\\title\{([^}]+)\}', latex_text)
-    if m:
-        raw = m.group(1)
-        # Strip LaTeX formatting: \\ (line break), \large, etc.
-        raw = re.sub(r'\\[a-zA-Z]+', ' ', raw)
-        raw = re.sub(r'\{|\}', '', raw)
-        return re.sub(r'\s+', ' ', raw).strip()
-    return "Lecture"
+    result = extract_title_from_latex(latex_text)
+    return result if result is not None else "Lecture"
+
+
+def _build_nav_groups(source_root: pathlib.Path) -> dict:
+    """
+    Call discover_chapters() and return the nav_groups dict for template rendering.
+
+    Raises DuplicateChapterNumber (ADR-007 whole-surface failure) if the corpus
+    contains two files with the same chapter number.
+    Raises InvalidChapterBasename (ADR-005 fail-loudly) if any .tex file has an
+    invalid basename.
+    """
+    return discover_chapters(source_root)
 
 
 def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
@@ -71,18 +81,18 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
     Render a Chapter as a full HTML page.
 
     Reads content/latex/{chapter_id}.tex, parses it, and renders the
-    Jinja2 template. Returns the HTML string.
+    Jinja2 template (which extends base.html.j2 to include the nav rail).
 
     ADR-001: reads from content/latex/ (read-only).
     ADR-002: section IDs derived from \\section macros.
     ADR-003: pipeline = parse → IR → Jinja2 template.
     ADR-004: designation from chapter_designation().
+    ADR-006: nav rail included via base.html.j2.
 
     Raises HTTPException(404) if the .tex file does not exist.
     Raises HTTPException(422) if the chapter_id is malformed (no valid chapter number).
+    Raises HTTPException(500) if navigation discovery detects duplicate chapter numbers.
     """
-    # Validate chapter_id can yield a chapter number (ADR-004 fail-loudly)
-    # This catches malformed IDs before we attempt a file read
     try:
         chapter_designation(chapter_id)
     except ValueError as exc:
@@ -94,24 +104,16 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
     root = pathlib.Path(source_root) if source_root else _get_content_root()
     tex_path = root / f"{chapter_id}.tex"
 
-    # ADR-001 §3: read-only — never open in write mode
     if not tex_path.exists():
         raise HTTPException(
             status_code=404,
             detail=f"Chapter source file not found: {tex_path.name}",
         )
 
-    # Read source (read-only, per ADR-001)
     latex_text = tex_path.read_text(encoding="utf-8")
-
-    # Extract chapter title from preamble (ADR-003 exception to preamble-ignore)
     title = _extract_title(latex_text)
-
-    # Resolve Mandatory/Optional designation (ADR-004)
     designation = chapter_designation(chapter_id)
 
-    # Extract sections from the document body (ADR-002)
-    # extract_sections raises ValueError if any \\section lacks a leading number
     try:
         sections = extract_sections(chapter_id, latex_text)
     except ValueError as exc:
@@ -120,12 +122,17 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
             detail=f"Section ID derivation failed for {chapter_id!r}: {exc}",
         )
 
-    # Parse the pre-section body (content before the first \\section)
-    # This renders the intro/chapter-map callout that appears before section 1.1
     body = _extract_document_body(latex_text)
     pre_section_html = _parse_pre_section_body(body, chapter_id)
 
-    # Render via Jinja2 template (ADR-003)
+    try:
+        nav_groups = _build_nav_groups(root)
+    except (DuplicateChapterNumber, InvalidChapterBasename) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chapter discovery error: {exc}",
+        )
+
     template = _jinja_env.get_template("lecture.html.j2")
     html = template.render(
         chapter_id=chapter_id,
@@ -133,6 +140,7 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
         designation=designation,
         sections=sections,
         pre_section_html=pre_section_html,
+        nav_groups=nav_groups,
     )
     return html
 
@@ -159,7 +167,6 @@ def _parse_pre_section_body(body: str, chapter_id: str) -> str:
     from app.parser import _nodes_to_html
     from app.parser import _is_starred_macro
     for node in nodelist:
-        # Stop at non-starred \section (which marks the first manifest Section)
         if isinstance(node, LatexMacroNode) and node.macroname == "section":
             if not _is_starred_macro(node):
                 break
@@ -170,18 +177,47 @@ def _parse_pre_section_body(body: str, chapter_id: str) -> str:
     return _nodes_to_html(pre_nodes)
 
 
+@app.get("/", response_class=HTMLResponse)
+async def index_page() -> HTMLResponse:
+    """
+    GET /
+
+    ADR-006: The landing page renders the grouped Chapter navigation.
+    Both "Mandatory" and "Optional" sections are shown; each Chapter links to
+    /lecture/{chapter_id}.
+
+    Returns:
+      200 — successfully rendered landing page
+      500 — Chapter discovery failed (duplicate chapter number per ADR-007)
+    """
+    source_root = _get_content_root()
+    try:
+        nav_groups = _build_nav_groups(source_root)
+    except (DuplicateChapterNumber, InvalidChapterBasename) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chapter discovery error: {exc}",
+        )
+
+    template = _jinja_env.get_template("index.html.j2")
+    html = template.render(nav_groups=nav_groups)
+    return HTMLResponse(content=html, status_code=200)
+
+
 @app.get("/lecture/{chapter_id}", response_class=HTMLResponse)
 async def lecture_page(chapter_id: str) -> HTMLResponse:
     """
     GET /lecture/{chapter_id}
 
-    ADR-003: Single route for TASK-001.
+    ADR-003: Lecture route.
+    ADR-006: Now renders with the LHS navigation rail via base.html.j2.
     Reads content/latex/{chapter_id}.tex, parses it, renders HTML.
 
     Returns:
       200 — successfully rendered Lecture page
       404 — chapter file does not exist
       422 — chapter_id is malformed (no valid chapter number)
+      500 — Chapter discovery failed (duplicate chapter number)
     """
     html = render_chapter(chapter_id)
     return HTMLResponse(content=html, status_code=200)

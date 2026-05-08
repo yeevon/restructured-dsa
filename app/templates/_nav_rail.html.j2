@@ -1,0 +1,23 @@
+<div class="nav-rail-inner">
+  <h2 class="nav-section-label">Mandatory</h2>
+  <ul class="nav-chapter-list">
+    {% for entry in nav_groups["Mandatory"] %}
+    <li class="nav-chapter-item{% if entry.label_status != 'ok' %} nav-chapter-error{% endif %}">
+      <a href="{{ entry.link_target }}">{{ entry.display_label }}</a>
+    </li>
+    {% else %}
+    <li class="nav-chapter-empty">(none)</li>
+    {% endfor %}
+  </ul>
+
+  <h2 class="nav-section-label">Optional</h2>
+  <ul class="nav-chapter-list">
+    {% for entry in nav_groups["Optional"] %}
+    <li class="nav-chapter-item{% if entry.label_status != 'ok' %} nav-chapter-error{% endif %}">
+      <a href="{{ entry.link_target }}">{{ entry.display_label }}</a>
+    </li>
+    {% else %}
+    <li class="nav-chapter-empty">(none)</li>
+    {% endfor %}
+  </ul>
+</div>

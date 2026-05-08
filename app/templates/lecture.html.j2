@@ -1,22 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} — CS 300 Lecture</title>
-  <link rel="stylesheet" href="/static/lecture.css">
-  <script>
-    MathJax = {
-      tex: {
-        inlineMath: [['$', '$']],
-        displayMath: [['\\[', '\\]']],
-        processEscapes: true
-      }
-    };
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
-</head>
-<body>
+{% extends "base.html.j2" %}
+
+{% block page_title %}{{ title }} — CS 300 Lecture{% endblock %}
+
+{% block main %}
   <article class="lecture">
 
     <header class="lecture-header">
@@ -40,5 +26,4 @@
     {% endfor %}
 
   </article>
-</body>
-</html>
+{% endblock %}

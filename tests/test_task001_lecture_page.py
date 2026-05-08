@@ -162,25 +162,32 @@ def test_ac3_mandatory_badge_present(ch01_lecture_response):
 
 def test_ac3_mandatory_not_optional(ch01_lecture_response):
     """
-    AC3: The badge says 'Mandatory', not 'Optional', for Chapter 1.
+    AC3: Chapter 1's own designation badge says 'Mandatory', not 'Optional'.
 
-    A page that says 'Optional' anywhere in a badge context would be wrong;
-    a page that says 'Mandatory' and 'Optional' as equal siblings could be a
-    filter toggle (future), but the badge must not label Ch-1 as Optional.
+    Scope: the `<header class="lecture-header">` block of the lecture body —
+    i.e. the chapter's own badge + title. NOT the page-wide HTML. ADR-006
+    introduced a navigation rail with a labeled "Optional" section that
+    legitimately appears on every Lecture page (including Mandatory chapters);
+    the original whole-HTML substring assertion is overbroad after ADR-006.
 
-    Trace: TASK-001 AC3.  ADR-004.  Manifest §8.
-
-    ASSUMPTION: in the absence of a filter-toggle UI (not in TASK-001 scope),
-    'Optional' should not appear in the rendered Chapter 1 page at all, since
-    only one Chapter is rendered and it is Mandatory.
+    Trace: TASK-001 AC3.  ADR-004.  ADR-006.  Manifest §8.
     """
     html = ch01_lecture_response.text
-    # 'Mandatory' must be present
-    assert "Mandatory" in html
-    # 'Optional' must NOT appear — Chapter 1 is not Optional
-    assert "Optional" not in html, (
-        "HTML contains 'Optional' on a Mandatory chapter page. "
-        "Badge or content is incorrectly labeling Chapter 1."
+
+    header_match = re.search(
+        r'<header class="lecture-header">.*?</header>',
+        html,
+        re.DOTALL,
+    )
+    assert header_match, "lecture-header block missing from rendered page"
+    lecture_header = header_match.group(0)
+
+    assert "Mandatory" in lecture_header, (
+        "Chapter 1's lecture-header block does not contain 'Mandatory'."
+    )
+    assert "Optional" not in lecture_header, (
+        "Chapter 1's lecture-header block contains 'Optional' — its own "
+        "badge should be Mandatory."
     )
 
 

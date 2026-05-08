@@ -1,8 +1,10 @@
 # Multi-chapter source file naming convention
 
-**Status:** Open
+**Status:** Resolved by ADR-005
 **Surfaced:** 2026-05-07 (TASK-001 / ADR-002)
 **Decide when:** the first task that renders a Chapter other than `ch-01-cpp-refresher` lands, OR when an index page covering multiple Chapters is required, whichever comes first.
+
+**Resolution note (2026-05-08, amended after human direction "going with form A kebab+slug"):** ADR-005 (Proposed under TASK-002) standardizes on a single canonical Chapter ID form — Form A `ch-{NN}-{slug}`, two-digit zero-padded number, kebab-case lowercase ASCII slug. The eleven legacy `ch{N}.tex` files (`ch2.tex`, `ch3.tex`, `ch4.tex`, `ch5.tex`, `ch6.tex`, `ch7.tex`, `ch9.tex`, `ch10.tex`, `ch11.tex`, `ch12.tex`, `ch13.tex`) must be renamed to Form A by the human as a content-management commit performed outside the application, prior to `/implement TASK-002`; the exact rename list is documented in ADR-005's "Precondition" section. The TASK-001 Run 005 ESCALATION on the `ch01-foo` form is also closed by the same ADR (rejected as a third valid form). The architect's prior recommendation to tolerate both forms was overridden by the human; the override prevails.
 
 ## Question
 

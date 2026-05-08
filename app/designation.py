@@ -13,6 +13,11 @@ No other code path may encode this threshold; every learner-facing surface
 calls chapter_designation().
 
 MC-3 (manifest-conformance): this module is the canonical mapping source.
+
+ADR-005: the canonical Chapter file basename form is Form A only:
+  ch-{NN}-{slug}  where NN is exactly two zero-padded digits.
+The _PATTERN_A regex below encodes Form A. Discovery code uses _PATTERN_A
+directly to filter basenames before routing to parse_chapter_number.
 """
 
 from __future__ import annotations
@@ -21,21 +26,15 @@ import re
 from typing import Literal
 
 
-# Valid Chapter ID patterns per ADR-002:
-#   (a) ch-NN-slug  — e.g. "ch-01-cpp-refresher", "ch-06-some-topic"
-#   (b) chN / chNN  — e.g. "ch2", "ch7", "ch13"  (no hyphen, no slug)
-#
-# STRICTLY rejects:
-#   - ch01-foo  (no initial hyphen, digits, then hyphen+slug) — neither canonical form
-#   - ch-00-*   (chapter 0 is outside manifest §8 range)
-#   - ch--1-*   (negative / double-hyphen)
-#   - anything else
+# ADR-005: canonical form — Form A (ch-NN-slug, exactly two padded digits).
+# Used by discovery.py to validate basenames before processing.
+_PATTERN_A = re.compile(r"^ch-(\d{2})-[a-z0-9][a-z0-9-]*$")
 
-# Pattern (a): ch-{digits}-{slug} — digits come after the first hyphen
-# The slug is one or more alphanumeric/hyphen characters after the second hyphen
-_PATTERN_A = re.compile(r"^ch-(\d+)-[a-z0-9][a-z0-9-]*$")
-
-# Pattern (b): ch{digits} with NO trailing hyphen+slug
+# Internal broad pattern for parse_chapter_number to remain backward-compatible
+# with any callers that use non-canonical IDs (e.g., ch-007-x used in TASK-001
+# edge-case tests). Discovery validates via _PATTERN_A first; this function only
+# extracts the number from whatever matches either pattern.
+_PATTERN_A_BROAD = re.compile(r"^ch-(\d+)-[a-z0-9][a-z0-9-]*$")
 _PATTERN_B = re.compile(r"^ch(\d+)$")
 
 
@@ -43,19 +42,21 @@ def parse_chapter_number(chapter_id: str) -> int:
     """
     Extract the chapter number from a Chapter ID.
 
-    ADR-002: valid forms are:
-      (a) ch-01-cpp-refresher  → 1
-      (b) ch2, ch7, ch13       → 2, 7, 13
+    ADR-002: valid forms in the broader corpus are:
+      (a) ch-01-cpp-refresher → 1  (Form A, canonical per ADR-005)
+      (b) ch2, ch7, ch13 → 2, 7, 13  (Form B, legacy)
+      Additionally handles over-padded digits (ch-007-x → 7) for
+      backward-compatibility with TASK-001 edge-case tests.
 
-    Leading zeros are stripped: ch-01 → 1, ch-007 → 7.
+    ADR-005: discovery code uses _PATTERN_A to pre-validate basenames;
+    this function is the arithmetic layer, not the naming-policy layer.
 
-    Raises ValueError for any ID that does not match a valid pattern or
-    yields chapter number <= 0.
+    Raises ValueError for any ID that matches neither pattern or yields
+    chapter number <= 0.
 
-    ADR-004: the chapter_designation function calls this; failures here
-    propagate as structured errors (no silent default).
+    ADR-004: failures propagate as structured errors (no silent default).
     """
-    m = _PATTERN_A.match(chapter_id)
+    m = _PATTERN_A_BROAD.match(chapter_id)
     if m:
         num = int(m.group(1))  # int() strips leading zeros
         if num <= 0:
@@ -68,7 +69,7 @@ def parse_chapter_number(chapter_id: str) -> int:
 
     m = _PATTERN_B.match(chapter_id)
     if m:
-        num = int(m.group(1))  # int() strips leading zeros
+        num = int(m.group(1))
         if num <= 0:
             raise ValueError(
                 f"Chapter ID {chapter_id!r} yields chapter number {num}, "
@@ -79,8 +80,8 @@ def parse_chapter_number(chapter_id: str) -> int:
 
     raise ValueError(
         f"Chapter ID {chapter_id!r} does not match any recognized Chapter ID pattern. "
-        "ADR-002 defines two valid forms: 'ch-NN-slug' and 'chN'. "
-        "ADR-004: fail loudly for IDs that yield no unambiguous chapter number."
+        "ADR-005 canonical form is 'ch-NN-slug'; ADR-004 fail loudly for "
+        "IDs that yield no unambiguous chapter number."
     )
 
 
