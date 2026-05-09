@@ -130,6 +130,8 @@ Per-agent run-entry shapes are defined in each agent's prompt. The general shape
 
 ## Orchestrator verification of subagent outputs
 
+*See `design_docs/decisions/ADR-016-orchestrator-verification-of-subagent-outputs.md` (Accepted, 2026-05-08). This section is the operational quick-reference; ADR-016 is authoritative. Amendments go through a supersedure ADR, not via edits to this section.*
+
 The orchestrator (the top-level Claude session driving `/next`, `/design`, `/implement`, `/review`) is responsible for verifying that each subagent actually produced the file changes it was expected to produce. Subagent summaries describe *intent*, not *outcome* — trust but verify.
 
 **After every subagent returns**, the orchestrator must:

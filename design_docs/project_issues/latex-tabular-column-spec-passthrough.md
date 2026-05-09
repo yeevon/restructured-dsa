@@ -47,4 +47,4 @@ Defensible to revisit at any point; the issue is `Open` so the next architect ru
 
 ## Resolution
 
-Resolved by ADR-011. The decision is: strip the column-spec argument from rendered output entirely (only data rows render); log a structured warning per ADR-003's warn-per-node pattern for complex/uninterpreted spec features (vertical bars, `p{width}`, `@{...}`). Simple alignment letters (`l`, `c`, `r`) are stripped without warning. This is a hybrid of Option 1 (strip-and-ignore for rendered output) and Option 3 (warn-per-node for uninterpreted features). ADR-011 is `Proposed` and awaits human acceptance before implementation proceeds.
+Resolved by ADR-011 (Accepted). The decision is: strip the column-spec argument from rendered output entirely (only data rows render); log a structured warning per ADR-003's warn-per-node pattern for complex/uninterpreted spec features (vertical bars, `p{width}`, `@{...}`). Simple alignment letters (`l`, `c`, `r`) are stripped without warning. This is a hybrid of Option 1 (strip-and-ignore for rendered output) and Option 3 (warn-per-node for uninterpreted features).

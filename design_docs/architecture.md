@@ -19,6 +19,10 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 010 | UI verification mechanism — Playwright (via `pytest-playwright`) as the project's UI test framework, with last-run screenshot artifacts gitignored | TASK-003 | 2026-05-08 |
 | 011 | Tabular column spec handling — strip from rendered output, warn-per-node for complex spec features | TASK-004 | 2026-05-08 |
 | 012 | Callout title rendering — extract optional `[Title]` argument and emit as `<div class="callout-title">` inside callout div | TASK-004 | 2026-05-08 |
+| 013 | Multi-chapter validation harness — split Playwright (visual) and HTTP-protocol pytest (smoke) | TASK-005 | 2026-05-08 |
+| 014 | Strip the `\\` linebreak macro from title extraction (resolves linebreak-passthrough project_issue) | TASK-005 | 2026-05-08 |
+| 015 | Multi-chapter validation pass routes bugs by class — LaTeX/parser fold-in; rail/CSS escalate to own task; else file as project_issue | TASK-005 | 2026-05-08 |
+| 016 | Orchestrator verifies subagent file outputs after every phase via `git diff`; remediates mechanical gaps directly | TASK-006 | 2026-05-08 |
 
 ## Proposed ADRs (awaiting human acceptance)
 

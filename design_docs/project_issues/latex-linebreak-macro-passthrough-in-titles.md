@@ -1,6 +1,6 @@
 # LaTeX `\\` linebreak macro passes through to rendered title text
 
-**Status:** Open
+**Status:** Resolved by ADR-014 (Accepted 2026-05-08)
 **Surfaced:** 2026-05-08 (TASK-002 audit Run 009 adjacent finding; `/design TASK-003` deferred from styling scope)
 **Decide when:** before the next task that adds a Chapter title source change, OR before the next task that surfaces titles in a *third* surface (the rail and the Lecture-page header are surfaces 1 and 2; a third surface would multiply the visible-bug surface area), whichever comes first. Defensible to defer to a focused fidelity task at any time.
 
@@ -50,4 +50,4 @@ Defensible to revisit at any point; the issue is `Open` so the next architect ru
 
 ## Resolution
 
-When resolved, mark this issue `Resolved by ADR-NNN`.
+Resolved by ADR-014 (Accepted 2026-05-08). The decision is Option 1 from this issue: strip the `\\` linebreak macro inside `extract_title_from_latex()` by adding `re.sub(r'\\\\', ' ', raw)` before the existing letter-named-macro strip. Title extraction remains regex-based plain-text; the single-extraction principle (ADR-007) is preserved; both surfaces (rail + Lecture-page header) render the same clean string. The fix is folded into TASK-005's `/implement` phase.

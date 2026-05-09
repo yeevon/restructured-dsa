@@ -209,11 +209,14 @@ def test_callout_title_is_first_child_of_callout_div(
 
     # Its first child element should be the callout-title div
     first_child = first_ideabox.locator("> *").first
-    # The first child must contain the title text
+    # The first child must contain the title text.
+    # Case-insensitive compare: .callout-title CSS uses `text-transform: uppercase`
+    # (ADR-012 / ADR-008 styling palette), so inner_text() returns the rendered
+    # uppercase form ("CHAPTER MAP"); the source title is "Chapter map".
     first_child_text = first_child.inner_text().strip()
-    assert "Chapter map" in first_child_text, (
+    assert "chapter map" in first_child_text.lower(), (
         "The first child of the first ideabox callout div does not contain "
-        "the title text 'Chapter map'. "
+        "the title text 'Chapter map' (case-insensitive). "
         "ADR-012 §Decision: 'The title div precedes the callout body content.' "
         f"First child text found: {first_child_text!r}"
     )

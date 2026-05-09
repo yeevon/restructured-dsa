@@ -45,6 +45,7 @@ def extract_title_from_latex(latex_text: str) -> str | None:
         return None
     raw = m.group(1)
     # Strip LaTeX formatting: \\ (line break), \large, \small, etc.
+    raw = re.sub(r'\\\\', ' ', raw)            # strip the \\ linebreak macro (ADR-014)
     raw = re.sub(r'\\[a-zA-Z]+', ' ', raw)
     raw = re.sub(r'[{}]', '', raw)
     normalized = re.sub(r'\s+', ' ', raw).strip()
