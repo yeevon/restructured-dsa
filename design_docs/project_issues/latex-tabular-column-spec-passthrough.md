@@ -1,6 +1,6 @@
 # LaTeX `tabular` column spec passes through to rendered table's first row
 
-**Status:** Open
+**Status:** Resolved by ADR-011 (Accepted)
 **Surfaced:** 2026-05-08 (TASK-003 human screenshot review; orchestrator opened from rendering-fidelity finding during the ADR-010 verification gate)
 **Decide when:** before the next task that introduces or restyles tables, OR before any task that adds a fixture/spec for table rendering, whichever comes first. Defensible to defer to a focused fidelity task at any time.
 
@@ -47,4 +47,4 @@ Defensible to revisit at any point; the issue is `Open` so the next architect ru
 
 ## Resolution
 
-When resolved, mark this issue `Resolved by ADR-NNN`.
+Resolved by ADR-011. The decision is: strip the column-spec argument from rendered output entirely (only data rows render); log a structured warning per ADR-003's warn-per-node pattern for complex/uninterpreted spec features (vertical bars, `p{width}`, `@{...}`). Simple alignment letters (`l`, `c`, `r`) are stripped without warning. This is a hybrid of Option 1 (strip-and-ignore for rendered output) and Option 3 (warn-per-node for uninterpreted features). ADR-011 is `Proposed` and awaits human acceptance before implementation proceeds.

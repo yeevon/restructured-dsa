@@ -17,6 +17,8 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 007 | Chapter discovery, display label, and within-group ordering | TASK-002 | 2026-05-08 |
 | 008 | Navigation styling layer — split into `app/static/base.css` (page chrome + rail) and reuse the existing `app/static/lecture.css` (Lecture body), with M/O reusing the established designation palette and CSS Grid for the page layout | TASK-003 | 2026-05-08 |
 | 010 | UI verification mechanism — Playwright (via `pytest-playwright`) as the project's UI test framework, with last-run screenshot artifacts gitignored | TASK-003 | 2026-05-08 |
+| 011 | Tabular column spec handling — strip from rendered output, warn-per-node for complex spec features | TASK-004 | 2026-05-08 |
+| 012 | Callout title rendering — extract optional `[Title]` argument and emit as `<div class="callout-title">` inside callout div | TASK-004 | 2026-05-08 |
 
 ## Proposed ADRs (awaiting human acceptance)
 

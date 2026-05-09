@@ -128,6 +128,24 @@ Agents do not consult the audit log to decide what to do. They consult the manif
 
 Per-agent run-entry shapes are defined in each agent's prompt. The general shape is: timestamp; input files read; tools/commands used; files created/modified/deleted; decisions surfaced (as pointers); leaks/pushback raised; tests/conformance/verification results; output summary.
 
+## Orchestrator verification of subagent outputs
+
+The orchestrator (the top-level Claude session driving `/next`, `/design`, `/implement`, `/review`) is responsible for verifying that each subagent actually produced the file changes it was expected to produce. Subagent summaries describe *intent*, not *outcome* — trust but verify.
+
+**After every subagent returns**, the orchestrator must:
+
+1. **Identify the expected file changes** from the subagent's task (e.g., "architect creates ADR-011," "architect updates architecture.md," "test-writer creates test file," "implementer modifies app/parser.py").
+2. **Run `git diff` on each expected file** to confirm the change exists and is substantively correct. A diff check is sufficient — do not pull full file context unless the diff reveals a problem.
+3. **If a file was supposed to be created**, confirm it exists (e.g., `git diff --name-only` or a quick glob).
+4. **If an expected change is missing or incomplete**, the orchestrator remedies the gap itself before proceeding to the next phase. Do not delegate to another subagent for a fix the orchestrator can make directly.
+5. **Append a note to the audit file** whenever a subagent fails to produce an expected update:
+
+```
+**Orchestrator remediation:** <agent type> (Run NNN) was expected to update <file path> with <description>. Change was missing/incomplete. Orchestrator applied the fix directly.
+```
+
+This verification step is mandatory at every phase transition: after `/next` (architect), after `/design` (architect), after each `/implement` phase (test-writer, implementer), and after `/review` (reviewer). The cost is one `git diff` per expected file — not a full re-read of the project.
+
 ## Pushback protocol (every agent, every layer)
 
 The project flows: **MANIFEST → Accepted ADRs → tasks → tests → code**. Each layer is a contract for the next layer to satisfy. Each agent reads the upstream layers and produces the next layer.

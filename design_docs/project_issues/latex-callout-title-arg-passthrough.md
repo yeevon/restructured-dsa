@@ -1,6 +1,6 @@
 # LaTeX callout `[Title]` optional argument renders as bracketed inline text instead of a callout title
 
-**Status:** Open
+**Status:** Resolved by ADR-012 (Accepted)
 **Surfaced:** 2026-05-08 (TASK-003 human screenshot review; orchestrator opened from rendering-fidelity finding during the ADR-010 verification gate)
 **Decide when:** before the next task that touches callout rendering or callout styling. Defensible to defer to a focused fidelity task at any time.
 
@@ -48,4 +48,4 @@ Defensible to revisit at any point; the issue is `Open` so the next architect ru
 
 ## Resolution
 
-When resolved, mark this issue `Resolved by ADR-NNN`.
+Resolved by ADR-012. The decision is: the parser handler extracts the optional `[Title]` argument and emits it as `<div class="callout-title">Title</div>` as the first child inside the callout div. The `.callout-title` CSS rule in `lecture.css` styles it (bold, uppercase, letter-spacing, bottom margin). Consistent across all five callout environments. Both rendering paths (`_nodes_to_html` and `_convert_inline_latex`) handle titles. No IR contract change -- the title is embedded HTML within `body_html`, consistent with ADR-003's existing pattern. ADR-012 is `Proposed` and awaits human acceptance before implementation proceeds.

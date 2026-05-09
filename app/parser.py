@@ -230,13 +230,40 @@ def _convert_inline_latex(node_list: list, context: str = "body") -> str:
                 content = m.group(1) if m else ""
                 result_parts.append(f"<pre><code>{_escape(content)}</code></pre>")
             elif env_name in CALLOUT_ENVS:
-                body_html = _convert_inline_latex(
-                    node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or []),
-                    context
-                )
+                # ADR-012: extract optional [Title] argument from raw verbatim.
+                # pylatexenc passes the [Title] through as a chars node at the
+                # start of the body — use regex on the raw verbatim to get the
+                # title text, then re-parse the body without the [Title] prefix.
+                raw_env = node.latex_verbatim()
+                title_pattern = r'\\begin\{' + re.escape(env_name) + r'\}\[([^\]]*)\]'
+                title_m = re.search(title_pattern, raw_env, re.DOTALL)
+                if title_m:
+                    box_title = title_m.group(1).strip()
+                    # Re-parse body from raw verbatim, skipping the [Title] prefix
+                    body_pattern = (
+                        r'\\begin\{' + re.escape(env_name) + r'\}'
+                        r'(?:\[[^\]]*\])?(.*?)\\end\{' + re.escape(env_name) + r'\}'
+                    )
+                    body_m = re.search(body_pattern, raw_env, re.DOTALL)
+                    body_latex = body_m.group(1) if body_m else ""
+                    try:
+                        from pylatexenc.latexwalker import LatexWalker as _LW
+                        _walker = _LW(body_latex)
+                        body_nodelist, _, _ = _walker.get_latex_nodes(pos=0)
+                        body_html = _convert_inline_latex(body_nodelist or [], context)
+                    except Exception:
+                        body_html = _escape(body_latex)
+                    title_html = _render_callout_title_html(box_title)
+                else:
+                    box_title = ""
+                    body_html = _convert_inline_latex(
+                        node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or []),
+                        context
+                    )
+                    title_html = ""
                 result_parts.append(
                     f'<div data-callout="{env_name}" class="callout callout-{env_name}">'
-                    f'{body_html}</div>'
+                    f'{title_html}{body_html}</div>'
                 )
             elif env_name == "math":
                 result_parts.append(f"${node.latex_verbatim()}$")
@@ -308,18 +335,62 @@ def _render_list(env_node, ordered: bool) -> str:
     return f"<{tag}>{items_html}</{tag}>"
 
 
+def _warn_complex_col_spec(col_spec: str, chapter_id: str) -> None:
+    """
+    ADR-011: Log structured warnings for complex tabular column-spec features.
+    Simple alignment letters (l, c, r) are stripped without warning.
+    Complex features trigger a warning per the warn-per-node pattern (ADR-003).
+    """
+    if "|" in col_spec:
+        logger.warning(
+            "Tabular column spec contains '|' (vertical bar separator) in chapter %s — "
+            "vertical rules are not rendered. ADR-011: warn-per-node for complex spec features.",
+            chapter_id,
+        )
+    if "p{" in col_spec:
+        logger.warning(
+            "Tabular column spec contains 'p{' (paragraph column) in chapter %s — "
+            "column width is not preserved. ADR-011: warn-per-node for complex spec features.",
+            chapter_id,
+        )
+    if "@{" in col_spec:
+        logger.warning(
+            "Tabular column spec contains '@{' (inter-column spacing) in chapter %s — "
+            "inter-column content is not rendered. ADR-011: warn-per-node for complex spec features.",
+            chapter_id,
+        )
+    if ">{" in col_spec:
+        logger.warning(
+            "Tabular column spec contains '>{' (column type modifier) in chapter %s — "
+            "column modifier is not applied. ADR-011: warn-per-node for complex spec features.",
+            chapter_id,
+        )
+    if "<{" in col_spec:
+        logger.warning(
+            "Tabular column spec contains '<{' (column type modifier) in chapter %s — "
+            "column modifier is not applied. ADR-011: warn-per-node for complex spec features.",
+            chapter_id,
+        )
+
+
 def _render_tabular(env_node) -> str:
     """Render a tabular environment as an HTML table."""
     from pylatexenc.latexwalker import LatexWalker
 
     # Get raw tabular content
     raw = env_node.latex_verbatim()
-    # Extract content between \begin{tabular}{...} and \end{tabular}
-    m = re.search(r'\\begin\{tabular\}\{[^}]*\}(.*?)\\end\{tabular\}', raw, re.DOTALL)
+    # Extract column spec and body content between \begin{tabular}{spec} and \end{tabular}
+    m = re.search(r'\\begin\{tabular\}\{([^}]*)\}(.*?)\\end\{tabular\}', raw, re.DOTALL)
     if not m:
         return f"<table><tr><td>{_escape(raw)}</td></tr></table>"
 
-    content = m.group(1).strip()
+    col_spec = m.group(1)
+    # ADR-011: log structured warnings for complex column-spec features.
+    # Simple alignment letters (l, c, r) are stripped without warning.
+    # Complex features (|, p{...}, @{...}, >{...}, <{...}) trigger warn-per-node.
+    _warn_complex_col_spec(col_spec, getattr(env_node, '_chapter_id', 'unknown'))
+
+    content = m.group(2).strip()
     rows = []
     for row_raw in re.split(r'\\\\', content):
         row_raw = row_raw.strip()
@@ -688,11 +759,32 @@ def _nodes_to_html(nodelist: list) -> str:
                 parts.append(f"<pre><code>{_escape(content)}</code></pre>")
             elif env_name in CALLOUT_ENVS:
                 flush_para()
-                inner_nodelist = node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or [])
-                body_html = _nodes_to_html(inner_nodelist)
-                # Extract optional argument (box title) if present
+                # ADR-012: extract optional [Title] argument and emit as callout-title div.
+                # pylatexenc does not parse the bracket arg for unknown envs — use
+                # raw verbatim regex to get the title, then re-parse the body
+                # content after stripping the [Title] prefix so it does not
+                # appear as visible bracketed text in the rendered output.
                 box_title = _get_optional_arg(node)
-                title_html = f'<div class="callout-title">{_escape(box_title)}</div>' if box_title else ""
+                if box_title:
+                    raw_env = node.latex_verbatim()
+                    body_pattern = (
+                        r'\\begin\{' + re.escape(env_name) + r'\}'
+                        r'(?:\[[^\]]*\])?(.*?)\\end\{' + re.escape(env_name) + r'\}'
+                    )
+                    body_m = re.search(body_pattern, raw_env, re.DOTALL)
+                    body_latex = body_m.group(1) if body_m else ""
+                    try:
+                        from pylatexenc.latexwalker import LatexWalker as _LW2
+                        _walker2 = _LW2(body_latex)
+                        body_nodelist2, _, _ = _walker2.get_latex_nodes(pos=0)
+                        body_html = _nodes_to_html(body_nodelist2 or [])
+                    except Exception:
+                        body_html = _escape(body_latex)
+                    title_html = _render_callout_title_html(box_title)
+                else:
+                    inner_nodelist = node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or [])
+                    body_html = _nodes_to_html(inner_nodelist)
+                    title_html = ""
                 parts.append(
                     f'<div data-callout="{env_name}" class="callout callout-{env_name}">'
                     f'{title_html}{body_html}</div>'
@@ -749,32 +841,41 @@ def _get_optional_arg(env_node) -> str:
     Extract the optional argument from a tcolorbox-style environment like
     \\begin{ideabox}[Title Text].
 
-    pylatexenc stores optional args before mandatory ones in nodeargd.
-    Returns the title text, or "" if no optional arg.
+    ADR-012: pylatexenc does not parse the optional bracket argument for
+    unknown environments (argnlist is empty). Extract the title by scanning
+    the raw verbatim for the leading [Title] pattern.
+
+    Returns the raw LaTeX title string, or "" if no optional arg.
     """
-    from pylatexenc.latexwalker import LatexGroupNode, LatexCharsNode, LatexMathNode
-
-    if not env_node.nodeargd or not env_node.nodeargd.argnlist:
-        return ""
-
-    for arg in env_node.nodeargd.argnlist:
-        if arg is None:
-            continue
-        # Optional args are LatexGroupNode with optional=True or bracket-based
-        # In pylatexenc, optional bracket args may be represented differently
-        if isinstance(arg, LatexGroupNode):
-            inner = arg.nodelist.nodelist if hasattr(arg.nodelist, 'nodelist') else (arg.nodelist or [])
-            parts = []
-            for n in inner:
-                if isinstance(n, LatexCharsNode):
-                    parts.append(n.chars)
-                elif isinstance(n, LatexMathNode):
-                    parts.append(n.latex_verbatim())
-                else:
-                    parts.append(_node_to_plain_text(n))
-            return "".join(parts).strip()
-
+    env_name = getattr(env_node, 'environmentname', '')
+    raw = env_node.latex_verbatim()
+    pattern = r'\\begin\{' + re.escape(env_name) + r'\}\[([^\]]*)\]'
+    m = re.search(pattern, raw, re.DOTALL)
+    if m:
+        return m.group(1).strip()
     return ""
+
+
+def _render_callout_title_html(title_latex: str) -> str:
+    """
+    Render a callout title string (raw LaTeX) as a callout-title div.
+
+    ADR-012: The title is HTML-escaped; macros inside the title (e.g.
+    \\texttt{...}) are also processed through _convert_inline_latex so that
+    they produce proper HTML rather than leaking raw LaTeX into the output.
+
+    Returns an empty string if title_latex is empty.
+    """
+    if not title_latex:
+        return ""
+    from pylatexenc.latexwalker import LatexWalker as _LW_title
+    try:
+        _walker_title = _LW_title(title_latex)
+        title_nodes, _, _ = _walker_title.get_latex_nodes(pos=0)
+        title_html = _convert_inline_latex(title_nodes or [], "heading")
+    except Exception:
+        title_html = _escape(title_latex)
+    return f'<div class="callout-title">{title_html}</div>'
 
 
 # ---- Top-level parse function ----
