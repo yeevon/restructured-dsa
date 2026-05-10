@@ -166,6 +166,17 @@ td, th {
   font-size: 0.9em;
 }
 
+/* ---- Unrecognized LaTeX environments (ADR-019) ---- */
+/* Generic identity wrapper for unknown \begin{X}...\end{X} environments.
+   No visual treatment by default — the inner content renders as-is.
+   The data-env attribute identifies the unhandled env type for debugging.
+   Reserved for future per-env editorial decisions if warranted. */
+.unrecognized-env {
+  /* identity wrapper — no visual treatment by default; reserved for
+     future per-env editorial decisions if any unhandled env's content
+     warrants distinguishing styling */
+}
+
 /* ---- Math ---- */
 .math, .math-inline, .math-display {
   font-style: italic;

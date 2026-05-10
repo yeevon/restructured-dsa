@@ -47,6 +47,144 @@ def _text_to_html(text: str) -> str:
     return _html_mod.escape(text, quote=False)
 
 
+def _strip_text_formatting_macros(raw: str) -> str:
+    """
+    ADR-020: Defensive macro-stripping pass applied at every ``_escape(raw)``
+    parse-failure fallback site.
+
+    Transforms the following patterns inside raw LaTeX text before HTML-escaping:
+
+    1. Recognized text-formatting macros become inline HTML:
+       - ``\\textbf{X}`` → ``<strong>{escaped X}</strong>``
+       - ``\\textit{X}`` → ``<em>{escaped X}</em>``
+       - ``\\emph{X}``   → ``<em>{escaped X}</em>``
+       - ``\\texttt{X}`` → ``<span class="texttt">{escaped X}</span>`` (ADR-018)
+       - ``\\textsc{X}`` → ``<span style="font-variant:small-caps">{escaped X}</span>``
+    2. ``\\begin{X}`` / ``\\end{X}`` substrings → consumed (emitted as nothing).
+       Body content between them is preserved (recursively run through the same pass).
+    3. Unrecognized ``\\macroname{X}`` → strip macro wrapper, keep escaped X.
+    4. Unrecognized ``\\macroname`` (no arg) → strip silently.
+    5. Math delimiters (``$...$``, ``\\[...\\]``, ``\\(...\\)``) are preserved
+       unescaped so MathJax renders them.
+
+    Uses balanced-brace consumption (ADR-017 mechanism) to walk ``\\macroname{...}``
+    arguments without breaking on nested braces.
+
+    This helper is applied at parse-failure fallback sites only; the successful
+    walker paths continue to use the existing ``_convert_inline_latex`` /
+    ``_nodes_to_html`` recursion.
+    """
+    # Map of recognized macro names to (open_tag, close_tag) pairs.
+    _MACRO_HTML = {
+        "textbf": ("<strong>", "</strong>"),
+        "textit": ("<em>", "</em>"),
+        "emph":   ("<em>", "</em>"),
+        "texttt": ('<span class="texttt">', "</span>"),
+        "textsc": ('<span style="font-variant:small-caps">', "</span>"),
+    }
+
+    out: list[str] = []
+    i = 0
+    n = len(raw)
+
+    while i < n:
+        ch = raw[i]
+
+        # ------------------------------------------------------------------ #
+        # Preserve math delimiters unescaped so MathJax still renders them.  #
+        # ------------------------------------------------------------------ #
+
+        # Display math: \[...\]
+        if raw[i:i+2] == r"\[":
+            end = raw.find(r"\]", i + 2)
+            if end != -1:
+                out.append(raw[i:end + 2])
+                i = end + 2
+                continue
+            # No closing \] — fall through and let the char be escaped
+
+        # Inline math (paren form): \(...\)
+        if raw[i:i+2] == r"\(":
+            end = raw.find(r"\)", i + 2)
+            if end != -1:
+                out.append(raw[i:end + 2])
+                i = end + 2
+                continue
+
+        # Inline math: $...$  (stop at next $, skipping \$)
+        if ch == "$":
+            j = i + 1
+            while j < n:
+                if raw[j] == "\\" and j + 1 < n:
+                    j += 2  # skip escaped char
+                    continue
+                if raw[j] == "$":
+                    break
+                j += 1
+            if j < n and raw[j] == "$":
+                out.append(raw[i:j + 1])
+                i = j + 1
+                continue
+            # No closing $ — fall through
+
+        # ------------------------------------------------------------------ #
+        # Handle backslash sequences.                                         #
+        # ------------------------------------------------------------------ #
+        if ch == "\\":
+            # Check for \begin{X} or \end{X} — consume both tokens silently.
+            # Also consume any optional argument [...]  that immediately follows
+            # (e.g., \begin{itemize}[leftmargin=*]).
+            begin_m = re.match(r"\\begin\{([^}]*)\}(?:\[[^\]]*\])?", raw[i:])
+            if begin_m:
+                i += len(begin_m.group(0))
+                continue
+
+            end_m = re.match(r"\\end\{([^}]*)\}(?:\[[^\]]*\])?", raw[i:])
+            if end_m:
+                i += len(end_m.group(0))
+                continue
+
+            # Check for a named macro: \macroname
+            macro_m = re.match(r"\\([A-Za-z@*]+)\*?", raw[i:])
+            if macro_m:
+                macro_name = macro_m.group(1)
+                macro_end = i + len(macro_m.group(0))
+
+                # Skip optional whitespace between macro name and argument
+                while macro_end < n and raw[macro_end] in " \t":
+                    macro_end += 1
+
+                # Does the macro have a braced argument?
+                if macro_end < n and raw[macro_end] == "{":
+                    arg_content, arg_end = _consume_balanced_brace_arg(raw, macro_end)
+                    # Recursively strip the argument content
+                    arg_html = _strip_text_formatting_macros(arg_content)
+                    if macro_name in _MACRO_HTML:
+                        open_t, close_t = _MACRO_HTML[macro_name]
+                        out.append(f"{open_t}{arg_html}{close_t}")
+                    else:
+                        # Unknown macro with arg — strip wrapper, keep arg content
+                        out.append(arg_html)
+                    i = arg_end
+                else:
+                    # No braced argument — consume macro name silently
+                    i = macro_end
+                continue
+
+            # Plain backslash not followed by a macro name — escape it
+            out.append(_escape(ch))
+            i += 1
+            continue
+
+        # ------------------------------------------------------------------ #
+        # Ordinary characters — HTML-escape and emit.                        #
+        # ------------------------------------------------------------------ #
+        out.append(_escape(ch))
+        i += 1
+
+    return "".join(out)
+
+
 def _convert_inline_latex(node_list: list, context: str = "body") -> str:
     """
     Recursively convert a list of pylatexenc nodes to HTML.
@@ -232,27 +370,33 @@ def _convert_inline_latex(node_list: list, context: str = "body") -> str:
             elif env_name in CALLOUT_ENVS:
                 # ADR-012: extract optional [Title] argument from raw verbatim.
                 # pylatexenc passes the [Title] through as a chars node at the
-                # start of the body — use regex on the raw verbatim to get the
-                # title text, then re-parse the body without the [Title] prefix.
+                # start of the body — use balanced-bracket consumption to get
+                # the title text so that titles containing $[array]$ or nested
+                # {braces} are consumed correctly (ADR-020 Site B fix).
                 raw_env = node.latex_verbatim()
-                title_pattern = r'\\begin\{' + re.escape(env_name) + r'\}\[([^\]]*)\]'
-                title_m = re.search(title_pattern, raw_env, re.DOTALL)
-                if title_m:
-                    box_title = title_m.group(1).strip()
-                    # Re-parse body from raw verbatim, skipping the [Title] prefix
-                    body_pattern = (
-                        r'\\begin\{' + re.escape(env_name) + r'\}'
-                        r'(?:\[[^\]]*\])?(.*?)\\end\{' + re.escape(env_name) + r'\}'
-                    )
-                    body_m = re.search(body_pattern, raw_env, re.DOTALL)
-                    body_latex = body_m.group(1) if body_m else ""
+                _b_begin = r'\begin{' + env_name + r'}'
+                _b_marker_pos = raw_env.find(_b_begin)
+                _b_after_marker = (_b_marker_pos + len(_b_begin)) if _b_marker_pos != -1 else -1
+                if _b_marker_pos != -1 and _b_after_marker < len(raw_env) and raw_env[_b_after_marker] == '[':
+                    box_title, _b_after_opt = _consume_balanced_bracket_optional_arg(raw_env, _b_after_marker)
+                    box_title = box_title.strip()
+                else:
+                    box_title = ""
+                    _b_after_opt = _b_after_marker if _b_marker_pos != -1 else 0
+                if box_title:
+                    # Extract body between the end of the optional arg and \end{env_name}
+                    _b_end_marker = r'\end{' + env_name + r'}'
+                    _b_end_pos = raw_env.find(_b_end_marker, _b_after_opt)
+                    body_latex = raw_env[_b_after_opt:_b_end_pos] if _b_end_pos != -1 else raw_env[_b_after_opt:]
                     try:
                         from pylatexenc.latexwalker import LatexWalker as _LW
                         _walker = _LW(body_latex)
                         body_nodelist, _, _ = _walker.get_latex_nodes(pos=0)
                         body_html = _convert_inline_latex(body_nodelist or [], context)
                     except Exception:
-                        body_html = _escape(body_latex)
+                        # ADR-020 Site B: defensive macro-stripping at callout body
+                        # re-walker fallback in _convert_inline_latex.
+                        body_html = _strip_text_formatting_macros(body_latex)
                     title_html = _render_callout_title_html(box_title)
                 else:
                     box_title = ""
@@ -282,7 +426,10 @@ def _convert_inline_latex(node_list: list, context: str = "body") -> str:
             elif env_name in ("figure", "figure*"):
                 pass  # Skip figures
             else:
-                # Unknown environment — log and try to preserve body text
+                # ADR-019: Unknown environment — log structured warning and wrap
+                # inner content in a generic <span class="unrecognized-env">
+                # (inline context uses <span> to avoid breaking inline flow).
+                # The data-env attribute identifies the unhandled env type.
                 logger.warning(
                     "Unknown LaTeX environment: %s — passing through content. "
                     "ADR-003: unknown nodes are silently ignored with a warning.",
@@ -292,7 +439,9 @@ def _convert_inline_latex(node_list: list, context: str = "body") -> str:
                     node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or []),
                     context
                 )
-                result_parts.append(inner)
+                result_parts.append(
+                    f'<span class="unrecognized-env" data-env="{_escape(env_name)}">{inner}</span>'
+                )
         else:
             # Unknown node type
             logger.warning(
@@ -371,6 +520,42 @@ def _warn_complex_col_spec(col_spec: str, chapter_id: str) -> None:
             "column modifier is not applied. ADR-011: warn-per-node for complex spec features.",
             chapter_id,
         )
+
+
+def _consume_balanced_bracket_optional_arg(text: str, start: int) -> tuple[str, int]:
+    """
+    Consume a balanced optional argument `[...]` starting at position `start`
+    (which must point to an opening `[`).
+
+    Handles nested braces `{...}` and nested brackets `[...]` so that
+    content like `[{Title with $[array]$ inside}]` is consumed correctly.
+
+    Returns (arg_content, end_pos) where:
+      - arg_content is the text between the outer `[...]` (not including them)
+      - end_pos is the index AFTER the closing `]` in `text`
+
+    If `[` is not found at `start`, returns ("", start).
+    """
+    if start >= len(text) or text[start] != "[":
+        return ("", start)
+
+    brace_depth = 0
+    bracket_depth = 1
+    i = start + 1  # position after the opening `[`
+    while i < len(text) and bracket_depth > 0:
+        ch = text[i]
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth -= 1
+        elif ch == "[" and brace_depth == 0:
+            bracket_depth += 1
+        elif ch == "]" and brace_depth == 0:
+            bracket_depth -= 1
+        i += 1
+    # i is now one past the closing `]`
+    arg_content = text[start + 1 : i - 1]  # between outer brackets
+    return (arg_content, i)
 
 
 def _consume_balanced_brace_arg(text: str, start: int) -> tuple[str, int]:
@@ -463,7 +648,8 @@ def _render_tabular(env_node) -> str:
                 cell_nodelist, _, _ = walker.get_latex_nodes(pos=0)
                 cell_html = _convert_inline_latex(cell_nodelist or [])
             except Exception:
-                cell_html = _escape(cell)
+                # ADR-020 Site A: defensive macro-stripping at cell-walker fallback.
+                cell_html = _strip_text_formatting_macros(cell)
             cells_html_parts.append(f"<td>{cell_html}</td>")
         rows.append(f"<tr>{''.join(cells_html_parts)}</tr>")
 
@@ -820,19 +1006,38 @@ def _nodes_to_html(nodelist: list) -> str:
                 box_title = _get_optional_arg(node)
                 if box_title:
                     raw_env = node.latex_verbatim()
-                    body_pattern = (
-                        r'\\begin\{' + re.escape(env_name) + r'\}'
-                        r'(?:\[[^\]]*\])?(.*?)\\end\{' + re.escape(env_name) + r'\}'
-                    )
-                    body_m = re.search(body_pattern, raw_env, re.DOTALL)
-                    body_latex = body_m.group(1) if body_m else ""
+                    # ADR-020: use balanced-bracket consumption to skip the optional
+                    # [Title] arg so that titles containing $[array]$ or {braces}
+                    # don't corrupt the body_latex start position.
+                    begin_marker = r'\begin{' + env_name + r'}'
+                    marker_pos = raw_env.find(begin_marker)
+                    if marker_pos == -1:
+                        body_latex = ""
+                    else:
+                        after_marker = marker_pos + len(begin_marker)
+                        # Skip optional [Title] arg with balanced-bracket consumer
+                        if after_marker < len(raw_env) and raw_env[after_marker] == '[':
+                            _, after_opt = _consume_balanced_bracket_optional_arg(
+                                raw_env, after_marker
+                            )
+                        else:
+                            after_opt = after_marker
+                        # Find \end{env_name} from after_opt onwards
+                        end_marker = r'\end{' + env_name + r'}'
+                        end_pos_in_rest = raw_env.find(end_marker, after_opt)
+                        if end_pos_in_rest == -1:
+                            body_latex = raw_env[after_opt:]
+                        else:
+                            body_latex = raw_env[after_opt:end_pos_in_rest]
                     try:
                         from pylatexenc.latexwalker import LatexWalker as _LW2
                         _walker2 = _LW2(body_latex)
                         body_nodelist2, _, _ = _walker2.get_latex_nodes(pos=0)
                         body_html = _nodes_to_html(body_nodelist2 or [])
                     except Exception:
-                        body_html = _escape(body_latex)
+                        # ADR-020 Site C: defensive macro-stripping at callout body
+                        # re-walker fallback in _nodes_to_html.
+                        body_html = _strip_text_formatting_macros(body_latex)
                     title_html = _render_callout_title_html(box_title)
                 else:
                     inner_nodelist = node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or [])
@@ -872,7 +1077,10 @@ def _nodes_to_html(nodelist: list) -> str:
                 flush_para()
                 parts.append(_nodes_to_html(inner_nodelist))
             else:
-                # Unknown environment — log warning, try to render content
+                # ADR-019: Unknown environment — log structured warning and wrap
+                # inner content in <div class="unrecognized-env" data-env="X">.
+                # The wrapper preserves inner content (no silent drop) and gives
+                # a single CSS hook for future per-env styling.
                 logger.warning(
                     "Unknown LaTeX environment: %s — passing through content. "
                     "ADR-003: unknown nodes are silently ignored with a warning.",
@@ -880,7 +1088,11 @@ def _nodes_to_html(nodelist: list) -> str:
                 )
                 inner_nodelist = node.nodelist.nodelist if hasattr(node.nodelist, 'nodelist') else (node.nodelist or [])
                 flush_para()
-                parts.append(_nodes_to_html(inner_nodelist))
+                inner_html = _nodes_to_html(inner_nodelist)
+                parts.append(
+                    f'<div class="unrecognized-env" data-env="{_escape(env_name)}">'
+                    f'{inner_html}</div>'
+                )
         else:
             # Chars, math, specials, comments → accumulate into paragraph
             para_nodes.append(node)
@@ -898,15 +1110,23 @@ def _get_optional_arg(env_node) -> str:
     unknown environments (argnlist is empty). Extract the title by scanning
     the raw verbatim for the leading [Title] pattern.
 
+    ADR-020: Uses balanced-bracket consumption so that titles containing
+    nested braces ``{...}`` or nested brackets ``$[array]$`` are consumed
+    correctly without stopping at the first ``]`` inside the title.
+
     Returns the raw LaTeX title string, or "" if no optional arg.
     """
     env_name = getattr(env_node, 'environmentname', '')
     raw = env_node.latex_verbatim()
-    pattern = r'\\begin\{' + re.escape(env_name) + r'\}\[([^\]]*)\]'
-    m = re.search(pattern, raw, re.DOTALL)
-    if m:
-        return m.group(1).strip()
-    return ""
+    begin_marker = r'\begin{' + env_name + r'}'
+    marker_pos = raw.find(begin_marker)
+    if marker_pos == -1:
+        return ""
+    after_marker = marker_pos + len(begin_marker)
+    if after_marker >= len(raw) or raw[after_marker] != '[':
+        return ""
+    arg_content, _ = _consume_balanced_bracket_optional_arg(raw, after_marker)
+    return arg_content.strip()
 
 
 def _render_callout_title_html(title_latex: str) -> str:
@@ -927,7 +1147,8 @@ def _render_callout_title_html(title_latex: str) -> str:
         title_nodes, _, _ = _walker_title.get_latex_nodes(pos=0)
         title_html = _convert_inline_latex(title_nodes or [], "heading")
     except Exception:
-        title_html = _escape(title_latex)
+        # ADR-020 Site D: defensive macro-stripping at callout title fallback.
+        title_html = _strip_text_formatting_macros(title_latex)
     return f'<div class="callout-title">{title_html}</div>'
 
 

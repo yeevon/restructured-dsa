@@ -139,7 +139,7 @@ The orchestrator (the top-level Claude session driving `/next`, `/design`, `/imp
 1. **Identify the expected file changes** from the subagent's task (e.g., "architect creates ADR-011," "architect updates architecture.md," "test-writer creates test file," "implementer modifies app/parser.py").
 2. **Run `git diff` on each expected file** to confirm the change exists and is substantively correct. A diff check is sufficient — do not pull full file context unless the diff reveals a problem.
 3. **If a file was supposed to be created**, confirm it exists (e.g., `git diff --name-only` or a quick glob).
-4. **If an expected change is missing or incomplete**, the orchestrator remedies the gap itself before proceeding to the next phase. Do not delegate to another subagent for a fix the orchestrator can make directly.
+4. **If an expected change is missing or incomplete**, the orchestrator remedies the gap itself before proceeding to the next phase. Do not delegate to another subagent for a fix the orchestrator can make directly. **Exception:** test assertion files (`tests/**/test_*.py`, `tests/**/*_test.py`) are excluded from this remedy-directly authority — re-invoke the test-writer with a delta brief instead. See ADR-021.
 5. **Append a note to the audit file** whenever a subagent fails to produce an expected update:
 
 ```

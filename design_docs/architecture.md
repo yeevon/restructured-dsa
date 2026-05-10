@@ -25,6 +25,9 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 016 | Orchestrator verifies subagent file outputs after every phase via `git diff`; remediates mechanical gaps directly | TASK-006 | 2026-05-08 |
 | 017 | Tabular column-spec stripping — implementation contract for ADR-011 (balanced-brace consumption) | TASK-007 | 2026-05-09 |
 | 018 | Render `\texttt{}` as `<span class="texttt">` so MathJax processes embedded inline math | TASK-007 | 2026-05-09 |
+| 019 | Unhandled-environment rendering strategy — generic consume-and-skip fallback (no per-env editorial commitments) | TASK-008 | 2026-05-10 |
+| 020 | Defensive macro-stripping pass in raw-text fallback paths — text-formatting macros do not leak from `_escape(raw)` sites | TASK-008 | 2026-05-10 |
+| 021 | Test assertion files are excluded from the orchestrator's direct-remediation authority granted by ADR-016 — test amendments require a test-writer re-invocation | (workflow refinement) | 2026-05-10 |
 
 ## Proposed ADRs (awaiting human acceptance)
 

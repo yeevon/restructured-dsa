@@ -1,6 +1,7 @@
 # Unhandled `\begin{...}` environments and text-formatting macros bleed through
 
-**Status:** Open
+**Status:** Resolved by ADR-019 (Gap A) and ADR-020 (Gap B) (both Accepted 2026-05-10)
+**Resolution note (2026-05-10, TASK-008 architect Mode 2):** Architect's `/design`-time corpus walk found zero source-level unhandled `\begin{...}` envs in the corpus (the TASK-005 catalog's "28 unhandled, ch-09 (22)" framing did not survive inspection). ADR-019 commits to a generic `<div class="unrecognized-env" data-env="X">` wrapper for the unknown-env dispatch (Gap A); ADR-020 commits to a defensive macro-stripping pass at every `_escape(raw)` parse-failure fallback site (Gap B — the most likely actual leak site for the 99 catalogued macro-token leaks). The empirical confirmation work the architect could not complete in `/design` (running a diagnostic test) is captured in the new project_issue `task008-leak-path-empirical-confirmation.md` and is the first step of `/implement TASK-008`.
 **Surfaced:** 2026-05-09 (TASK-005 human screenshot review; orchestrator Run 008 corpus-wide categorization)
 **Decide when:** as part of TASK-007 candidate. Medium-to-high visible-bug surface; concentrated in specific Chapters but covers two related parser-handler gaps.
 

@@ -227,7 +227,9 @@ When resolved, mark this issue `Resolved by ADR-NNN`.
 
 9. **If a decision needs the human's input,** record it as an ADR with `Status: Pending Resolution`, and end your output with `> NEEDS HUMAN: ADR-NNN — <one-sentence question>`. Implementation cannot proceed past this until the human resolves.
 
-10. **Append a run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md` before stopping. Entry shape:
+10. **Pre-exit write-path check.** Allowed write paths in Mode 2 are `design_docs/{tasks,audit,decisions,project_issues}/**` only. Before appending your audit Run entry, run `git status --short` and confirm no file outside this set is created or modified. If any are present (e.g., a scratch test or source file you created to think with, or any edit to `app/`, `tests/`, `CLAUDE.md`, `MANIFEST.md`, or a skill file), revert or delete them before continuing. Note the result in your Run entry as a `**Write-path check:**` line — `clean` if no violations, or `violations remediated: <list>` if you had to revert.
+
+11. **Append a run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md` before stopping. Entry shape:
 
     ```
     ### Run NNN — architect / Mode 2 `/design`
@@ -240,6 +242,7 @@ When resolved, mark this issue `Resolved by ADR-NNN`.
     **ADRs proposed:** `ADR-NNN` — <one-line decision> (×N)
     **Project issues opened/resolved:** <slug — opened|resolved by ADR-NNN>
     **architecture.md changes:** <row added to Proposed/Pending; or "none">
+    **Write-path check:** <clean | violations remediated: <list>>
     **Architecture leaks found:** <list, or "none">
     **Pushback raised:** <list, or "none">
     **Implementation blocked pending human acceptance:** <yes|no — list ADRs awaiting gate>

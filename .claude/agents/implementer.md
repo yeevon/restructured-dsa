@@ -40,6 +40,7 @@ When invoked with a task and a list of test file paths:
     - If the task changes a rendering pipeline, audit the WHOLE rendered artifact — iterate over every instance of the affected element, not one example. Lead with counts ("0/N have leaks"), not excerpts.
     - Walk the conformance skill against your diff. Any blocker is a self-detected escalation; surface it before reporting.
     - If you find adjacent bugs in the same code path while doing this, surface them — do not silently expand scope to fix, but do not silently leave them for the user to discover either.
+    - **New top-level callable check.** If your fix introduced a new top-level function, module, class, or public method that is not named in a test file or in the cited ADRs for this task — *even if it is load-bearing for making a test pass* — STOP and surface it as `ADJACENT FINDING:` before reporting done. The trigger is the new code surface, not whether it's optional. The test-passing fix and the new surface are separately gateable. Renames, parameter additions to existing callables, and inline refactors are NOT triggers.
 
 13. **Append a run entry to the task audit file** at `design_docs/audit/TASK-NNN-<slug>.md`. Entry shape:
 
