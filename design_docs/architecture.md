@@ -23,6 +23,8 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 014 | Strip the `\\` linebreak macro from title extraction (resolves linebreak-passthrough project_issue) | TASK-005 | 2026-05-08 |
 | 015 | Multi-chapter validation pass routes bugs by class — LaTeX/parser fold-in; rail/CSS escalate to own task; else file as project_issue | TASK-005 | 2026-05-08 |
 | 016 | Orchestrator verifies subagent file outputs after every phase via `git diff`; remediates mechanical gaps directly | TASK-006 | 2026-05-08 |
+| 017 | Tabular column-spec stripping — implementation contract for ADR-011 (balanced-brace consumption) | TASK-007 | 2026-05-09 |
+| 018 | Render `\texttt{}` as `<span class="texttt">` so MathJax processes embedded inline math | TASK-007 | 2026-05-09 |
 
 ## Proposed ADRs (awaiting human acceptance)
 

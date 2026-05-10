@@ -145,7 +145,7 @@ def _convert_inline_latex(node_list: list, context: str = "body") -> str:
             elif name == "textit" or name == "emph":
                 result_parts.append(f"<em>{get_arg_html(0)}</em>")
             elif name == "texttt":
-                result_parts.append(f"<code>{get_arg_html(0)}</code>")
+                result_parts.append(f'<span class="texttt">{get_arg_html(0)}</span>')
             elif name == "textsc":
                 result_parts.append(f"<span style=\"font-variant:small-caps\">{get_arg_html(0)}</span>")
             elif name == "textemdash" or name == "textemdash ":
@@ -373,24 +373,77 @@ def _warn_complex_col_spec(col_spec: str, chapter_id: str) -> None:
         )
 
 
+def _consume_balanced_brace_arg(text: str, start: int) -> tuple[str, int]:
+    """
+    ADR-017: Consume a balanced-brace argument starting at position `start`
+    (which must point to an opening `{`).
+
+    Walks character-by-character keeping a brace-depth counter:
+      - start at 1 (we've conceptually opened the outer `{`)
+      - +1 on each `{`, -1 on each `}`
+      - terminates when depth reaches 0
+
+    Returns (spec_content, end_pos) where:
+      - spec_content is the text between the outer `{...}` (not including them)
+      - end_pos is the index AFTER the closing `}` in `text`
+
+    If the opening `{` is not found at `start`, returns ("", start).
+    """
+    if start >= len(text) or text[start] != "{":
+        return ("", start)
+
+    depth = 1
+    i = start + 1  # position after the opening `{`
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        i += 1
+    # i is now one past the closing `}`
+    spec_content = text[start + 1 : i - 1]  # between outer braces
+    return (spec_content, i)
+
+
 def _render_tabular(env_node) -> str:
     """Render a tabular environment as an HTML table."""
     from pylatexenc.latexwalker import LatexWalker
 
     # Get raw tabular content
     raw = env_node.latex_verbatim()
-    # Extract column spec and body content between \begin{tabular}{spec} and \end{tabular}
-    m = re.search(r'\\begin\{tabular\}\{([^}]*)\}(.*?)\\end\{tabular\}', raw, re.DOTALL)
-    if not m:
+
+    # ADR-017: Use balanced-brace consumption to find the column-spec argument.
+    # The old `[^}]*` regex terminated at the first `}` inside `@{}`, `p{width}`,
+    # `>{}`, `<{}` etc., causing those characters to leak into the first table cell.
+    # The new mechanism walks from `\begin{tabular}{` and counts brace depth to
+    # find the matching `}` of the spec's outer brace pair.
+    begin_marker = r"\begin{tabular}{"
+    marker_pos = raw.find(begin_marker)
+    if marker_pos == -1:
+        # Try \begin{array}{ as a fallback
+        begin_marker = r"\begin{array}{"
+        marker_pos = raw.find(begin_marker)
+    if marker_pos == -1:
         return f"<table><tr><td>{_escape(raw)}</td></tr></table>"
 
-    col_spec = m.group(1)
+    # The opening `{` of the spec is at marker_pos + len(begin_marker) - 1
+    spec_open_pos = marker_pos + len(begin_marker) - 1  # index of `{`
+    col_spec, body_start_pos = _consume_balanced_brace_arg(raw, spec_open_pos)
+
+    # Find \end{tabular} (or \end{array}) for the body boundary
+    end_marker_m = re.search(r'\\end\{(?:tabular|array)\}', raw[body_start_pos:], re.DOTALL)
+    if end_marker_m:
+        content = raw[body_start_pos : body_start_pos + end_marker_m.start()]
+    else:
+        content = raw[body_start_pos:]
+
     # ADR-011: log structured warnings for complex column-spec features.
     # Simple alignment letters (l, c, r) are stripped without warning.
     # Complex features (|, p{...}, @{...}, >{...}, <{...}) trigger warn-per-node.
     _warn_complex_col_spec(col_spec, getattr(env_node, '_chapter_id', 'unknown'))
 
-    content = m.group(2).strip()
+    content = content.strip()
     rows = []
     for row_raw in re.split(r'\\\\', content):
         row_raw = row_raw.strip()

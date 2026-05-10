@@ -154,6 +154,18 @@ td, th {
   padding: 0.3rem 0.6rem;
 }
 
+/* ---- Inline typewriter text (ADR-018) ---- */
+/* \texttt{} emits <span class="texttt"> so MathJax processes embedded inline math.
+   Visual properties reproduce the existing `p code` styling so the rendered
+   appearance is unchanged for texttt content without embedded math. */
+.texttt {
+  font-family: 'Courier New', Courier, monospace;
+  background: #f3ede2;
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+  font-size: 0.9em;
+}
+
 /* ---- Math ---- */
 .math, .math-inline, .math-display {
   font-style: italic;

@@ -1,8 +1,12 @@
 # `\texttt{...$...$...}` traps inline math from MathJax (renders `$...$` literally)
 
-**Status:** Open
+**Status:** Resolved by ADR-018 (Accepted 2026-05-09)
 **Surfaced:** 2026-05-09 (TASK-005 human screenshot review — "Picture the list", "Picture of the interior splice" callouts in ch-04; orchestrator Run 008 corpus-wide categorization)
 **Decide when:** as part of TASK-007 candidate. High visible-bug surface — every typewriter-fonted ASCII-art-with-math illustration in the corpus is broken.
+
+## Resolution note
+
+ADR-018 (`design_docs/decisions/ADR-018-texttt-as-span-for-mathjax-passthrough.md`) commits the parser to emitting `<span class="texttt">...</span>` instead of `<code>...</code>` for the `\texttt{}` macro, with a matching CSS rule in `app/static/lecture.css` that reproduces the inline-code visual look (font-family monospace, soft background, slight padding). MathJax's default `skipHtmlTags` does not skip `<span>`, so embedded `$...$` math renders as glyphs. If ADR-018 is rejected at gate, this issue reverts to `Open` and is re-triaged in a follow-up `/design` cycle.
 
 ## Question
 

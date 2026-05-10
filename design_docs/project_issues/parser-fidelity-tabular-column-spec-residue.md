@@ -1,8 +1,12 @@
 # Tabular column-spec residue leaks into first table cell (ADR-011 implementation gap)
 
-**Status:** Open
+**Status:** Resolved by ADR-017 (Accepted 2026-05-09)
 **Surfaced:** 2026-05-09 (TASK-005 human screenshot review; orchestrator Run 008 corpus-wide categorization)
 **Decide when:** as part of the focused parser-fidelity follow-up task (TASK-007 candidate). High visible-bug surface; affects every Chapter that uses `\begin{tabular}{@{}...@{}}` in source.
+
+## Resolution note
+
+ADR-017 (`design_docs/decisions/ADR-017-tabular-column-spec-stripping-implementation.md`) commits the parser to balanced-brace consumption of the `\begin{tabular}{...}` argument so that nested `{}` pairs (`@{}`, `p{width}`, `>{...}`, `<{...}`) are consumed as part of the spec rather than terminating the match early. Implements ADR-011's outcome contract; does not supersede it. If ADR-017 is rejected at gate, this issue reverts to `Open` and is re-triaged in a follow-up `/design` cycle.
 
 ## Question
 
