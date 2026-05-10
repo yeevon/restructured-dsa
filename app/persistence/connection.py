@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_chapter_id ON notes (chapter_id);
+
+CREATE TABLE IF NOT EXISTS section_completions (
+    section_id   TEXT PRIMARY KEY,
+    chapter_id   TEXT NOT NULL,
+    completed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_section_completions_chapter_id
+    ON section_completions (chapter_id);
 """
 
 

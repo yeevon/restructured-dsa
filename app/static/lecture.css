@@ -281,3 +281,80 @@ td, th {
 .note-form-submit:hover {
   background: #2d5a5b;
 }
+
+/* ---- Section completion surface (ADR-025) ---- */
+/* All section-completion-* classes go in lecture.css per ADR-008 class-name-prefix
+   convention. The completion affordance lives inside the Lecture body's <main> region,
+   inline with each <h2 class="section-heading">. */
+
+/* Heading row: flex container holding the <h2> and the completion form side-by-side */
+.section-heading-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.section-heading-row .section-heading {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+/* The completion form container — no default margin/border; sits inline */
+.section-completion-form {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Base button style shared by both states */
+.section-completion-button {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.8rem;
+  padding: 0.25em 0.75em;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid;
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* Incomplete state: neutral outlined button */
+.section-completion-button--incomplete {
+  background: #fdfaf6;
+  color: #3d6a6b;
+  border-color: #3d6a6b;
+}
+
+.section-completion-button--incomplete:hover {
+  background: #3d6a6b;
+  color: #fff;
+}
+
+/* Complete state: filled green button (reuses designation-mandatory palette) */
+.section-completion-button--complete {
+  background: #2a5a2a;
+  color: #fff;
+  border-color: #2a5a2a;
+}
+
+.section-completion-button--complete:hover {
+  background: #1e421e;
+  border-color: #1e421e;
+}
+
+/* Section-wide treatment when the Section is in the completed set (ADR-025
+   §State indicator shape — three-layered indicator #3: section-level CSS class).
+   Adds a colored left border and slightly muted heading color without obscuring
+   the section's content or the designation badge. */
+.section-complete {
+  border-left: 4px solid #2a5a2a;
+  padding-left: 0.75rem;
+}
+
+.section-complete .section-heading {
+  color: #2a5a2a;
+}

@@ -30,6 +30,8 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 021 | Test assertion files are excluded from the orchestrator's direct-remediation authority granted by ADR-016 — test amendments require a test-writer re-invocation | (workflow refinement) | 2026-05-10 |
 | 022 | Persistence layer — SQLite via stdlib `sqlite3`, `app/persistence/` package boundary, and the Note schema | TASK-009 | 2026-05-10 |
 | 023 | Notes creation/read surface — `POST /lecture/{chapter_id}/notes` form-encoded with PRG redirect, Notes section appended to `lecture.html.j2`, multi-Note list with empty-state caption | TASK-009 | 2026-05-10 |
+| 024 | Section completion schema and persistence module — `section_completions` table (presence ≡ complete) under `app/persistence/section_completions.py` | TASK-010 | 2026-05-10 |
+| 025 | Section completion UI surface — `POST /lecture/{chapter_id}/sections/{section_number}/complete` with `action` form field, inline affordance next to each `<h2 class="section-heading">`, full-page PRG redirect with URL fragment | TASK-010 | 2026-05-10 |
 
 ## Proposed ADRs (awaiting human acceptance)
 

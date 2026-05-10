@@ -9,6 +9,9 @@ Both surfaces render nav_groups from discover_chapters() — one source of truth
 ADR-022: persistence layer — app/persistence/ is the only DB-toucher.
 ADR-023: Notes surface — POST /lecture/{chapter_id}/notes (PRG 303 redirect);
          GET /lecture/{chapter_id} extended to fetch + display Notes.
+ADR-024: Section completions — section_completions table; presence-as-complete semantics.
+ADR-025: Section completion UI surface — POST /lecture/{chapter_id}/sections/{n}/complete;
+         GET /lecture/{chapter_id} extended to pass complete_section_ids to template.
 
 MC-6: no write to content/latex/ — all files are opened read-only.
 MC-7: no auth, no user_id, no session.
@@ -32,7 +35,14 @@ from app.discovery import (
 )
 from app.designation import chapter_designation
 from app.parser import extract_sections, parse_latex, _extract_document_body
-from app.persistence import init_schema, create_note, list_notes_for_chapter
+from app.persistence import (
+    init_schema,
+    create_note,
+    list_notes_for_chapter,
+    mark_section_complete,
+    unmark_section_complete,
+    list_complete_section_ids_for_chapter,
+)
 
 # ---- Jinja2 environment ----
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
@@ -150,6 +160,11 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
     # ADR-023: fetch Notes for this Chapter (most-recent-first per ADR-022)
     notes = list_notes_for_chapter(chapter_id)
 
+    # ADR-025: fetch the set of completed Section IDs for this Chapter.
+    # Passed to the template so each Section's form can reflect the current state.
+    # A single indexed query per request — sub-millisecond at single-user scale.
+    complete_section_ids = set(list_complete_section_ids_for_chapter(chapter_id))
+
     template = _jinja_env.get_template("lecture.html.j2")
     html = template.render(
         chapter_id=chapter_id,
@@ -159,6 +174,7 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
         pre_section_html=pre_section_html,
         nav_groups=nav_groups,
         notes=notes,
+        complete_section_ids=complete_section_ids,
     )
     return html
 
@@ -299,5 +315,82 @@ async def create_note_route(
     # PRG redirect to GET /lecture/{chapter_id} (ADR-023 §Route shape, HTTP 303)
     return RedirectResponse(
         url=f"/lecture/{chapter_id}",
+        status_code=303,
+    )
+
+
+@app.post("/lecture/{chapter_id}/sections/{section_number}/complete")
+async def toggle_section_complete(
+    chapter_id: str,
+    section_number: str,
+    action: str = Form(default=""),
+) -> RedirectResponse:
+    """
+    POST /lecture/{chapter_id}/sections/{section_number}/complete
+
+    ADR-025: Section completion toggle route.
+    Accepts a form-encoded body with a single field `action` whose value is
+    exactly "mark" or "unmark".
+
+    ADR-024: delegates DB work exclusively to app/persistence/ (MC-10).
+    ADR-025: PRG 303 redirect to GET /lecture/{chapter_id}#section-{section_number}
+             so the browser scrolls back to the just-toggled Section.
+
+    MC-6: never writes to content/latex/.
+    MC-7: no user_id, no auth, no session.
+    MC-10: no sqlite3 import here — only in app/persistence/.
+
+    Returns:
+      303 — success (PRG redirect with URL fragment)
+      400 — action field is missing or not exactly "mark" or "unmark"
+      404 — chapter_id is not a known corpus Chapter
+      404 — section_number does not correspond to a known Section in this Chapter
+    """
+    # --- Validate action field (ADR-025 §Validation) ---
+    if action not in ("mark", "unmark"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid action {action!r}. Must be 'mark' or 'unmark'.",
+        )
+
+    # --- Validate chapter_id (ADR-025 §Validation; same pattern as ADR-023) ---
+    source_root = _get_content_root()
+    tex_path = pathlib.Path(source_root) / f"{chapter_id}.tex"
+    if not tex_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter not found: {chapter_id!r}",
+        )
+
+    # --- Validate section_number against the discovered Section set (ADR-024/ADR-025) ---
+    latex_text = tex_path.read_text(encoding="utf-8")
+    try:
+        sections = extract_sections(chapter_id, latex_text)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Section ID derivation failed for {chapter_id!r}: {exc}",
+        )
+
+    # The full Section ID composed from path parameters (ADR-025 §Route shape)
+    section_id = f"{chapter_id}#section-{section_number}"
+
+    known_section_ids = {s["id"] for s in sections}
+    if section_id not in known_section_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section not found: {section_id!r} in chapter {chapter_id!r}",
+        )
+
+    # --- Persist the state change via the persistence package (ADR-024 §Package boundary) ---
+    if action == "mark":
+        mark_section_complete(section_id=section_id, chapter_id=chapter_id)
+    else:
+        unmark_section_complete(section_id=section_id)
+
+    # --- PRG redirect to GET /lecture/{chapter_id}#section-{section_number} ---
+    # ADR-025 §Round-trip return point: URL fragment restores browser scroll position.
+    return RedirectResponse(
+        url=f"/lecture/{chapter_id}#section-{section_number}",
         status_code=303,
     )

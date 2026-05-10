@@ -17,8 +17,27 @@
     {% endif %}
 
     {% for section in sections %}
-    <section id="{{ section.fragment }}">
-      <h2 class="section-heading">{{ section.heading | safe }}</h2>
+    <section id="{{ section.fragment }}"
+             class="{% if section.id in complete_section_ids %}section-complete{% endif %}">
+      <div class="section-heading-row">
+        <h2 class="section-heading">{{ section.heading | safe }}</h2>
+        <form class="section-completion-form" method="post"
+              action="/lecture/{{ chapter_id }}/sections/{{ section.section_number }}/complete">
+          {% if section.id in complete_section_ids %}
+            <input type="hidden" name="action" value="unmark">
+            <button type="submit"
+                    class="section-completion-button section-completion-button--complete">
+              &#10003; Complete
+            </button>
+          {% else %}
+            <input type="hidden" name="action" value="mark">
+            <button type="submit"
+                    class="section-completion-button section-completion-button--incomplete">
+              Mark complete
+            </button>
+          {% endif %}
+        </form>
+      </div>
       <div class="section-body">
         {{ section.body_html | safe }}
       </div>

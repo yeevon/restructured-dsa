@@ -749,6 +749,10 @@ def extract_sections(chapter_id: str, latex_body: str) -> list[dict[str, Any]]:
             current_section = {
                 "id": f"{chapter_id}#{fragment}",
                 "fragment": fragment,
+                # ADR-025: section_number is the n-m part (e.g. "1-1"), derived
+                # from the fragment by stripping the "section-" prefix.
+                # The route handler uses this for /lecture/{chapter_id}/sections/{n-m}/complete.
+                "section_number": fragment.removeprefix("section-"),
                 "heading": heading_html,
                 "heading_text": heading_text,
                 "body_html": "",
