@@ -28,6 +28,8 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 019 | Unhandled-environment rendering strategy — generic consume-and-skip fallback (no per-env editorial commitments) | TASK-008 | 2026-05-10 |
 | 020 | Defensive macro-stripping pass in raw-text fallback paths — text-formatting macros do not leak from `_escape(raw)` sites | TASK-008 | 2026-05-10 |
 | 021 | Test assertion files are excluded from the orchestrator's direct-remediation authority granted by ADR-016 — test amendments require a test-writer re-invocation | (workflow refinement) | 2026-05-10 |
+| 022 | Persistence layer — SQLite via stdlib `sqlite3`, `app/persistence/` package boundary, and the Note schema | TASK-009 | 2026-05-10 |
+| 023 | Notes creation/read surface — `POST /lecture/{chapter_id}/notes` form-encoded with PRG redirect, Notes section appended to `lecture.html.j2`, multi-Note list with empty-state caption | TASK-009 | 2026-05-10 |
 
 ## Proposed ADRs (awaiting human acceptance)
 

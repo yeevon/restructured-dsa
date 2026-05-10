@@ -181,3 +181,103 @@ td, th {
 .math, .math-inline, .math-display {
   font-style: italic;
 }
+
+/* ---- Notes surface (ADR-023) ---- */
+/* All Notes-related classes go in lecture.css per ADR-008 class-name-prefix convention.
+   The Notes section lives inside the Lecture body's <main> region. */
+
+.notes-surface {
+  margin-top: 3rem;
+  border-top: 2px solid #c8bfb0;
+  padding-top: 1.5rem;
+}
+
+.notes-heading {
+  color: #3d6a6b;
+  font-size: 1.3rem;
+  border-bottom: 1px solid #c8bfb0;
+  padding-bottom: 0.3rem;
+  margin-top: 0;
+}
+
+.notes-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 1.5rem;
+}
+
+.note-item {
+  background: #f7f4ef;
+  border: 1px solid #d4cbba;
+  border-radius: 4px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.note-meta {
+  margin-bottom: 0.4rem;
+}
+
+.note-timestamp {
+  font-size: 0.8rem;
+  color: #7a6a5a;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.note-body {
+  white-space: pre-wrap;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #2a1e14;
+}
+
+.notes-empty {
+  color: #7a6a5a;
+  font-style: italic;
+  margin: 0.8rem 0 1.5rem;
+}
+
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 600px;
+}
+
+.note-form-label {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #3d3020;
+}
+
+.note-form-input {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.95rem;
+  border: 1px solid #c8bfb0;
+  border-radius: 3px;
+  padding: 0.5rem 0.7rem;
+  resize: vertical;
+  background: #fdfaf6;
+  color: #2a1e14;
+}
+
+.note-form-input:focus {
+  outline: 2px solid #3d6a6b;
+  border-color: #3d6a6b;
+}
+
+.note-form-submit {
+  align-self: flex-start;
+  background: #3d6a6b;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 0.45em 1.2em;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.note-form-submit:hover {
+  background: #2d5a5b;
+}

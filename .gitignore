@@ -19,7 +19,8 @@ htmlcov/
 venv/
 env/
 
-# SQLite runtime state
+# SQLite runtime state — ADR-022 (data/notes.db default + NOTES_DB_PATH override)
+data/
 *.db
 *.sqlite
 *.sqlite3

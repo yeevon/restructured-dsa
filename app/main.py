@@ -6,16 +6,21 @@ ADR-006: GET / returns the grouped Chapter navigation landing page;
 every Lecture page includes the same navigation rail via base.html.j2.
 Both surfaces render nav_groups from discover_chapters() — one source of truth.
 
+ADR-022: persistence layer — app/persistence/ is the only DB-toucher.
+ADR-023: Notes surface — POST /lecture/{chapter_id}/notes (PRG 303 redirect);
+         GET /lecture/{chapter_id} extended to fetch + display Notes.
+
 MC-6: no write to content/latex/ — all files are opened read-only.
 MC-7: no auth, no user_id, no session.
+MC-10: no sqlite3 import here — only in app/persistence/.
 """
 
 from __future__ import annotations
 
 import pathlib
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -27,6 +32,7 @@ from app.discovery import (
 )
 from app.designation import chapter_designation
 from app.parser import extract_sections, parse_latex, _extract_document_body
+from app.persistence import init_schema, create_note, list_notes_for_chapter
 
 # ---- Jinja2 environment ----
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
@@ -41,6 +47,12 @@ app = FastAPI(title="Restructured CS 300")
 # Mount static files from app/static/
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# ---- Persistence bootstrap (ADR-022) ----
+# Run schema init at module load time so the DB and table exist before any
+# request arrives.  Using startup event would require async; module-level
+# call is fine for sync sqlite3 (ADR-022: no async driver).
+init_schema()
 
 
 def _get_content_root() -> pathlib.Path:
@@ -88,6 +100,8 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
     ADR-003: pipeline = parse → IR → Jinja2 template.
     ADR-004: designation from chapter_designation().
     ADR-006: nav rail included via base.html.j2.
+    ADR-022/ADR-023: notes for the Chapter fetched from persistence and
+                     passed to the template under the `notes` variable.
 
     Raises HTTPException(404) if the .tex file does not exist.
     Raises HTTPException(422) if the chapter_id is malformed (no valid chapter number).
@@ -133,6 +147,9 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
             detail=f"Chapter discovery error: {exc}",
         )
 
+    # ADR-023: fetch Notes for this Chapter (most-recent-first per ADR-022)
+    notes = list_notes_for_chapter(chapter_id)
+
     template = _jinja_env.get_template("lecture.html.j2")
     html = template.render(
         chapter_id=chapter_id,
@@ -141,6 +158,7 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
         sections=sections,
         pre_section_html=pre_section_html,
         nav_groups=nav_groups,
+        notes=notes,
     )
     return html
 
@@ -211,6 +229,7 @@ async def lecture_page(chapter_id: str) -> HTMLResponse:
 
     ADR-003: Lecture route.
     ADR-006: Now renders with the LHS navigation rail via base.html.j2.
+    ADR-023: Extended to fetch Notes for the Chapter and pass them to the template.
     Reads content/latex/{chapter_id}.tex, parses it, renders HTML.
 
     Returns:
@@ -221,3 +240,64 @@ async def lecture_page(chapter_id: str) -> HTMLResponse:
     """
     html = render_chapter(chapter_id)
     return HTMLResponse(content=html, status_code=200)
+
+
+# Maximum Note body size in bytes (ADR-023 §Validation: 64 KiB).
+_MAX_NOTE_BODY_BYTES = 65536  # 64 KiB
+
+
+@app.post("/lecture/{chapter_id}/notes")
+async def create_note_route(
+    chapter_id: str,
+    body: str = Form(default=""),
+) -> RedirectResponse:
+    """
+    POST /lecture/{chapter_id}/notes
+
+    ADR-023: New Notes creation route.
+    Accepts a form-encoded body with a single field `body`.
+    Validates and persists the Note, then returns HTTP 303 PRG redirect to
+    GET /lecture/{chapter_id}.
+
+    ADR-022: delegates DB work exclusively to app/persistence/ (MC-10).
+    MC-6: never writes to content/latex/.
+    MC-7: no user_id, no auth, no session.
+
+    Returns:
+      303 — success (PRG redirect to the Lecture page)
+      400 — body is empty or whitespace-only after trim
+      404 — chapter_id is not a known corpus Chapter
+      413 — body exceeds 64 KiB
+    """
+    # Validate chapter_id against the discovered set (ADR-023 §Validation)
+    source_root = _get_content_root()
+    tex_path = pathlib.Path(source_root) / f"{chapter_id}.tex"
+    if not tex_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter not found: {chapter_id!r}",
+        )
+
+    # Size check: reject bodies > 64 KiB (ADR-023 §Validation)
+    if len(body.encode("utf-8")) > _MAX_NOTE_BODY_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Note body exceeds the 64 KiB maximum.",
+        )
+
+    # Trim and reject empty / whitespace-only bodies (ADR-023 §Validation)
+    trimmed = body.strip()
+    if not trimmed:
+        raise HTTPException(
+            status_code=400,
+            detail="Note body must not be empty.",
+        )
+
+    # Persist the Note via the persistence package (ADR-022 §Package boundary)
+    create_note(chapter_id, trimmed)
+
+    # PRG redirect to GET /lecture/{chapter_id} (ADR-023 §Route shape, HTTP 303)
+    return RedirectResponse(
+        url=f"/lecture/{chapter_id}",
+        status_code=303,
+    )
