@@ -2,7 +2,7 @@
 
 **Task file:** `design_docs/tasks/TASK-010-section-completion-marking.md`
 **Started:** 2026-05-10T00:00:00Z
-**Status:** Reviewed
+**Status:** Committed
 **Current phase:** review
 
 ---
@@ -15,6 +15,7 @@
 | 2026-05-10T21:58:59Z | ADR-024 reviewed | auto-accepted | /auto run |
 | 2026-05-10T21:58:59Z | ADR-025 reviewed | auto-accepted | /auto run |
 | 2026-05-10T22:56:02Z | Tests reviewed | auto-accepted | /auto run (resumed; AC-9 moved out of ACs — see Run 005) |
+| 2026-05-10T23:31:09Z | Commit review | auto-accepted | /auto run — commit d2fec21 |
 
 ---
 
