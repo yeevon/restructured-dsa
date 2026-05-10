@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-009-notes-bootstrap-minimum-viable-create-and-read.md`
 **Started:** 2026-05-10T00:00:00Z
-**Status:** Implemented
-**Current phase:** verify
+**Status:** Committed
+**Current phase:** committed
 
 ---
 
@@ -14,6 +14,7 @@
 | 2026-05-10T00:00:00Z | Task reviewed | accepted | Proceeding to `/design TASK-009`. |
 | 2026-05-10T00:00:00Z | ADRs reviewed | accepted | ADR-022 and ADR-023 flipped Proposed → Accepted. Proceeding to `/implement TASK-009`. |
 | 2026-05-10T00:00:00Z | Tests reviewed | accepted | 28 failing / 29 passing on first run. Coverage spans AC-1..9; AC-10/11 are reviewer/human-gated. Proceeding to implementer. |
+| 2026-05-10T00:00:00Z | Commit review | ready | Reviewer Run 006 READY-TO-COMMIT; surface-placement visibility concern filed as `project_issues/notes-surface-placement-visibility.md` (Open) rather than blocking commit. Commit `06c067f`. |
 
 ---
 
