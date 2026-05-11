@@ -18,13 +18,18 @@
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
 </head>
 <body>
-  <div class="page-layout">
+  <div class="page-layout{% if not rail_notes_context %} page-layout--no-notes{% endif %}">
     <nav class="lecture-rail">
       {% include "_nav_rail.html.j2" %}
     </nav>
     <main class="page-main">
       {% block main %}{% endblock %}
     </main>
+    {% if rail_notes_context %}
+    <aside class="notes-rail" aria-labelledby="rail-notes-heading">
+      {% include "_notes_rail.html.j2" %}
+    </aside>
+    {% endif %}
   </div>
 </body>
 </html>

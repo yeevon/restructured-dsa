@@ -1,12 +1,12 @@
 # ADR-025: Section completion UI surface — `POST /lecture/{chapter_id}/sections/{section_number}/complete` with `action` form field, inline affordance next to each `<h2 class="section-heading">`, full-page PRG redirect
 
-**Status:** `Superseded by ADR-027` (§Template-placement only — see ADR-027 for the bottom-of-Section replacement; the route shape, form-handling pattern, validation, round-trip return point, and styling-file ownership from this ADR remain in force)
+**Status:** `Superseded by ADR-027` (§Template-placement only — see ADR-027 for the bottom-of-Section replacement) and `Superseded by ADR-030` (§Round-trip-return-point only — see ADR-030 for the no-fragment 303 redirect). The route shape (`POST /lecture/{chapter_id}/sections/{section_number}/complete` with form-encoded `action`), form-handling pattern, validation, persistence integration, the state-indicator triad, and styling-file ownership from this ADR remain in force.
 Original Acceptance: Auto-accepted by /auto on 2026-05-10
 **Date:** 2026-05-10
 **Task:** TASK-010
 **Resolves:** none (no project_issue filed against this question; the surface decision is forced inline by TASK-010)
 **Supersedes:** none
-**Superseded by:** `ADR-027` (Auto-accepted by /auto on 2026-05-10)
+**Superseded by:** `ADR-027` (§Template-placement only — Auto-accepted by /auto on 2026-05-10) and `ADR-030` (§Round-trip-return-point only — Auto-accepted by /auto on 2026-05-11, TASK-012)
 
 ## Context
 

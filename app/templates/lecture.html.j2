@@ -23,7 +23,7 @@
       <div class="section-body">
         {{ section.body_html | safe }}
       </div>
-      <div class="section-end">
+      <div class="section-end" id="{{ section.fragment }}-end">
         <form class="section-completion-form" method="post"
               action="/lecture/{{ chapter_id }}/sections/{{ section.section_number }}/complete">
           {% if section.id in complete_section_ids %}

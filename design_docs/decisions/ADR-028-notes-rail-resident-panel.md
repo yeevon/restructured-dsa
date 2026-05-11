@@ -1,11 +1,12 @@
 # ADR-028: Supersedure of ADR-023 §Template-surface — Notes section moves from bottom-of-page to rail-resident panel
 
-**Status:** `Accepted`
-Auto-accepted by /auto on 2026-05-10
+**Status:** `Superseded by ADR-029` (§Rail-integration and the part of §Template-surface that placed `<section class="rail-notes">` inside `_nav_rail.html.j2` only — see ADR-029 for the move to a right-hand rail in a three-column layout. The route shape, form-handling pattern, validation, multiple-Note display order, submit-feedback shape, empty-state copy, no-edit/delete, no-Markdown, persistence integration, the textarea-sizing *approach* (`rows="3"` + `field-sizing: content` + `resize: vertical` + no JS), the removal of the bottom-of-page Notes section in `lecture.html.j2`, the `notes` → `rail_notes_context` template-variable rename, the `{% if rail_notes_context %}` guard, and the load-bearing principle "visibility follows scroll-position-cost" all remain Accepted as written by this ADR.)
+Original Acceptance: Auto-accepted by /auto on 2026-05-10
 **Date:** 2026-05-10
 **Task:** TASK-011
 **Resolves:** `design_docs/project_issues/notes-surface-placement-visibility.md`
 **Supersedes:** `ADR-023` (§Template-surface only — the route shape, the form-handling pattern, the empty-state shape, the multiple-Note display order, the submit-feedback shape, and the validation rules all remain Accepted as written by ADR-023; the styling-file ownership shifts per ADR-008's prefix convention because the surface moves from `lecture.html.j2`'s body to `_nav_rail.html.j2`)
+**Superseded by:** `ADR-029` (§Rail-integration / §Template-surface portion only — Auto-accepted by /auto on 2026-05-11, TASK-012)
 
 ## Context
 

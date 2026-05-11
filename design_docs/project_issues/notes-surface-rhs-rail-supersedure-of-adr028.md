@@ -1,8 +1,10 @@
 # Notes surface — LHS rail was the wrong rail; RHS would match the reading-flow real estate
 
-**Status:** Open
+**Status:** Resolved by ADR-029
 **Surfaced:** 2026-05-11 (TASK-011 human post-commit review)
 **Decide when:** the next task that touches the page-layout grid or any rail-resident surface — likely the same `/design` cycle that supersedes the section-completion PRG-redirect scroll-disrupt issue (`section-completion-prg-redirect-disrupts-scroll-position.md`), since both are post-TASK-011 placement/UX corrections to ADR-027/028 and bundling them avoids a second template/CSS-only `/design` round.
+
+**Resolution note:** Resolved by ADR-029 (Proposed, 2026-05-11, TASK-012) — Option 1 chosen: three-column CSS Grid (LHS chapter rail | centered main | RHS Notes rail); the `<section class="rail-notes">` block is extracted from `_nav_rail.html.j2` into a new `_notes_rail.html.j2` partial included by `base.html.j2` in the new RHS column; the grid degrades to two columns on `GET /`; the `rail-notes-*` / `rail-note-*` class names are kept (no rename) with a new `.notes-rail` wrapper class in `base.css`; ADR-028's other decisions (route, validation, PRG, multiple-Note order, textarea-sizing approach, no-JS, bottom-of-page-Notes removal, the `notes`→`rail_notes_context` rename, the `{% if rail_notes_context %}` guard, the "visibility follows scroll-position-cost" principle) are retained. ADR-028's §Rail-integration / §Template-surface portion is marked `Superseded by ADR-029`. Awaiting human acceptance of ADR-029.
 
 ## Question
 

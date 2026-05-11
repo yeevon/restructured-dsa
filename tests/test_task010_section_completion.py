@@ -225,10 +225,24 @@ def test_post_complete_returns_303_redirect(tmp_path, monkeypatch) -> None:
 
 def test_post_complete_redirect_location_contains_chapter(tmp_path, monkeypatch) -> None:
     """
-    AC-2 (TASK-010) / ADR-025: the 303 Location header points to
-    GET /lecture/{chapter_id}#section-{section_number}.
+    AC-2 (TASK-010) / ADR-025 amended by ADR-031 (TASK-012 delta, supersedes ADR-030
+    §Decision which superseded ADR-025 §Round-trip-return-point):
 
-    Trace: AC-2; ADR-025 §Round-trip return point.
+    AMENDMENT — ADR-031 (Accepted, 2026-05-11) supersedes ADR-030 §Decision.
+    The 303 Location header now points to GET /lecture/{chapter_id}#section-{n}-end
+    (a fragment anchored to the .section-end wrapper element which has
+    id="section-{n-m}-end"). The ADR-030 assertion ('assert "#" not in location')
+    is REMOVED; the Location must now carry a '#section-{n}-end' fragment.
+
+    ADR-030 §Decision was empirically refuted by Playwright audit Run 006:
+    Chromium reset scrollY to 0 on the fragment-less same-URL POST→303→GET navigation.
+    ADR-031 picks the anchor + scroll-margin-top mechanism instead.
+
+    Per CLAUDE.md / user-memory: "Test updates forced by Accepted ADRs are routine."
+
+    Trace: AC-2; ADR-031 §Decision; ADR-031 §Test-writer pre-flag (item 2);
+           supersedes ADR-030 §Decision (Run 004 amendment) which superseded
+           ADR-025 §Round-trip return point.
     """
     client = _make_client(monkeypatch, _db_path(tmp_path))
 
@@ -242,13 +256,21 @@ def test_post_complete_redirect_location_contains_chapter(tmp_path, monkeypatch)
     assert f"/lecture/{TEST_CHAPTER_ID}" in location, (
         f"303 Location is {location!r}; expected it to contain "
         f"'/lecture/{TEST_CHAPTER_ID}'. "
-        "ADR-025: PRG must redirect to the Chapter's Lecture page."
+        "ADR-025/ADR-031: PRG must redirect to the Chapter's Lecture page."
     )
-    # ADR-025: URL fragment to scroll back to the toggled Section
-    assert f"section-{TEST_SECTION_NUMBER}" in location, (
-        f"303 Location {location!r} does not contain 'section-{TEST_SECTION_NUMBER}'. "
-        "ADR-025: redirect must include the Section anchor fragment so the browser "
-        "scrolls back to the toggled Section."
+    # ADR-031 §Decision: the Location must carry '#section-{n}-end' fragment.
+    # The .section-end wrapper gains id="section-{n-m}-end" in lecture.html.j2;
+    # the CSS rule '.section-end { scroll-margin-top: 75vh; }' in lecture.css
+    # (ADR-008: section-* → lecture.css) prevents the heading from snapping to the top.
+    assert f"section-{TEST_SECTION_NUMBER}-end" in location, (
+        f"303 Location {location!r} does not contain 'section-{TEST_SECTION_NUMBER}-end'. "
+        "ADR-031 §Test-writer pre-flag (item 2): re-amended from "
+        "'assert \"#\" not in location' (ADR-030 amendment, Run 004) to assert the "
+        "#section-{n}-end fragment. The route handler must emit "
+        f"url=f'/lecture/{{chapter_id}}#section-{{section_number}}-end' per "
+        "ADR-031 §Decision. "
+        "The new contract is tested comprehensively in "
+        "test_task012_rhs_notes_rail_and_redirect.py."
     )
 
 

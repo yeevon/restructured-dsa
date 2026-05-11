@@ -401,15 +401,20 @@ async def toggle_section_complete(
     exactly "mark" or "unmark".
 
     ADR-024: delegates DB work exclusively to app/persistence/ (MC-10).
-    ADR-025: PRG 303 redirect to GET /lecture/{chapter_id}#section-{section_number}
-             so the browser scrolls back to the just-toggled Section.
+    ADR-031 (supersedes ADR-030 §Decision, supersedes ADR-025 §Round-trip-return-point):
+             PRG 303 redirect to GET /lecture/{chapter_id}#section-{section_number}-end.
+             The fragment points at the .section-end wrapper (id="section-{n-m}-end" in
+             lecture.html.j2).  The CSS '.section-end { scroll-margin-top: <large-vh>; }'
+             in lecture.css lands the wrapper near the bottom of the viewport — ≈ where
+             the user clicked — with no JavaScript. ADR-030's load-bearing principle
+             ("response must not relocate the user") is retained.
 
     MC-6: never writes to content/latex/.
     MC-7: no user_id, no auth, no session.
     MC-10: no sqlite3 import here — only in app/persistence/.
 
     Returns:
-      303 — success (PRG redirect with URL fragment)
+      303 — success (PRG redirect to #section-{n}-end anchor)
       400 — action field is missing or not exactly "mark" or "unmark"
       404 — chapter_id is not a known corpus Chapter
       404 — section_number does not correspond to a known Section in this Chapter
@@ -456,9 +461,17 @@ async def toggle_section_complete(
     else:
         unmark_section_complete(section_id=section_id)
 
-    # --- PRG redirect to GET /lecture/{chapter_id}#section-{section_number} ---
-    # ADR-025 §Round-trip return point: URL fragment restores browser scroll position.
+    # --- PRG redirect to GET /lecture/{chapter_id}#section-{section_number}-end ---
+    # ADR-031 §Decision (supersedes ADR-030 §Decision): the 303 Location header
+    # carries a fragment pointing at the .section-end wrapper (which has
+    # id="section-{n-m}-end" in lecture.html.j2).  The CSS rule
+    # '.section-end { scroll-margin-top: <large-vh>; }' in lecture.css (ADR-008:
+    # section-* → lecture.css) makes the browser leave that much space above
+    # .section-end, landing it near the bottom of the viewport — ≈ where the user
+    # clicked — with no JavaScript.
+    # ADR-030's load-bearing principle ("the response to a reading-flow action must
+    # not relocate the user") is retained; ADR-031's mechanism delivers it faithfully.
     return RedirectResponse(
-        url=f"/lecture/{chapter_id}#section-{section_number}",
+        url=f"/lecture/{chapter_id}#section-{section_number}-end",
         status_code=303,
     )

@@ -14,11 +14,18 @@ body {
   padding: 0;
 }
 
-/* ---- Two-column page layout (CSS Grid per ADR-008) ---- */
+/* ---- Three-column page layout (CSS Grid per ADR-029) ---- */
+/* Lecture pages: LHS chapter rail | centered main | RHS Notes rail           */
+/* Landing page:  two-column via .page-layout--no-notes modifier class        */
 .page-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 18rem) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 18rem) minmax(0, 860px) minmax(220px, 22rem);
   min-height: 100vh;
+}
+
+/* Two-column form for landing page (no Chapter context → no Notes rail) */
+.page-layout--no-notes {
+  grid-template-columns: minmax(220px, 18rem) minmax(0, 1fr);
 }
 
 /* ---- Main content column ---- */
@@ -35,9 +42,22 @@ body {
   min-height: 100vh;
 }
 
+/* ---- Right Notes rail container (ADR-029) ---- */
+/* Mirrors the LHS .lecture-rail aesthetic; border on left edge instead of right. */
+.notes-rail {
+  background: #f2ede5;
+  border-left: 1px solid #d4cbba;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
 /* ---- Inner rail wrapper ---- */
-/* ADR-028 §Rail integration: flex column so chapter list scrolls and Notes
-   panel sits below it without overflow-y:auto covering the button. */
+/* ADR-029: Notes panel has moved to the RHS rail; the flex-column wrapper is
+   retained for the chapter list scroll, but no longer needs to accommodate a
+   stacked Notes panel below the chapter list. */
 .nav-rail-inner {
   display: flex;
   flex-direction: column;
@@ -160,10 +180,7 @@ body {
    (the Notes surface is now rail-resident; prefix rail-* maps to base.css). */
 
 .rail-notes {
-  flex-shrink: 0;
-  padding: 0.75rem 0.75rem 1rem;
-  border-top: 1px solid #d4cbba;
-  margin-top: 0.5rem;
+  padding: 1rem 0.75rem 1.5rem;
 }
 
 .rail-notes-heading {

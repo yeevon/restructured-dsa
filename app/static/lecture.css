@@ -196,7 +196,14 @@ td, th {
    Notes moved to rail-resident panel; classes renamed to rail-notes-* / rail-note-*
    in base.css per ADR-008 prefix convention). */
 
-/* Bottom-of-Section wrapper (ADR-027 §Visual end-of-section break) */
+/* Bottom-of-Section wrapper (ADR-027 §Visual end-of-section break)
+   ADR-031 §Decision: scroll-margin-top is required so that fragment navigation
+   to #section-{n}-end (the .section-end wrapper, id="{{ section.fragment }}-end"
+   per lecture.html.j2) lands the wrapper near the bottom of the viewport — ≈
+   where the user clicked — rather than snapping it to the top.  The value is
+   implementer-tunable; the ADR-030 Playwright assertion (abs(post − pre) ≤ 200px)
+   is the binding lock.  Per ADR-008 §section-* → lecture.css, this rule belongs here.
+*/
 .section-end {
   margin-top: 1.5rem;
   padding-top: 1rem;
@@ -204,6 +211,11 @@ td, th {
   border-top: 1px solid #c8bfb0;
   display: flex;
   justify-content: flex-end;
+  scroll-margin-top: 50vh; /* ADR-031: implementer-tunable; positions .section-end
+                               ≈ at the center of the viewport after fragment navigation,
+                               matching where Playwright's scroll_into_view_if_needed
+                               leaves the button; tune if Playwright scroll-delta-≤-200px
+                               assertion fails (target: abs(post − pre) ≤ 200px) */
 }
 
 /* The completion form container inside .section-end */
