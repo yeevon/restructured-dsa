@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-013-quiz-domain-model-and-per-section-quiz-surface.md`
 **Started:** 2026-05-11T12:00:00Z
-**Status:** Reviewed (the Run 005 /auto-stop PUSHBACK is resolved — see Run 006 + Run 008 + Run 009; reviewer Run 010 = READY TO COMMIT; awaiting commit)
-**Current phase:** review
+**Status:** Committed (89f81c2)
+**Current phase:** committed
 
 ---
 
@@ -17,6 +17,7 @@
 | 2026-05-11T14:30:00Z | Tests reviewed | auto-accepted | /auto run — 96 tests collected (3 new files), 42 failing pre-implementation |
 | 2026-05-11T16:30:00Z | ADR-035 reviewed | accepted | Human-directed cleanup ADR (no-JS over-reach). Accepted by the human; architecture.md row moved to Accepted; project-structure summary regenerated. |
 | 2026-05-11T17:45:00Z | rendered-surface verification (TASK-013 per-Section Quiz surface) | pending human | Human reviews the per-Section Quiz surface on a Mandatory + an Optional Chapter (last-run Playwright screenshots under `tests/playwright/artifacts/` or the dev server directly): empty-state legible; "Generate a Quiz" button visually clear; `requested`-status display reads honestly; **no layout regression** from the `.section-end` `flex-direction: column` change. Edit this row to `pass` (or file a finding) post-commit. |
+| 2026-05-11T18:00:00Z | Commit review | accepted | Human directed "commit and push". Commit `89f81c2` — `feat(quiz): TASK-013 — Quiz domain schema + per-Section Quiz read surface`. Reviewer Run 010 was `READY TO COMMIT` (0 blockers; conformance walk PASS; all 14 ACs satisfied). |
 
 ---
 
