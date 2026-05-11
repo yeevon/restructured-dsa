@@ -1,8 +1,10 @@
 # Notes surface placement — bottom-of-page is practically invisible at chapter scale
 
-**Status:** Open
+**Status:** Resolved by ADR-028 (pending acceptance — Proposed 2026-05-10 in TASK-011 `/design`)
 **Surfaced:** 2026-05-10 (TASK-009 human commit-gate review)
 **Decide when:** when Notes feature work next surfaces (e.g. edit/delete/Markdown/Section-ref follow-up) — relocation can ride alongside that ADR rather than re-cycling Notes alone. Not a blocker for shipping TASK-009.
+
+**Resolution note (2026-05-10, TASK-011 `/design`):** Proposed ADR-028 supersedes ADR-023 §Template-surface, relocating the Notes UI from the bottom of `lecture.html.j2`'s `{% block main %}` to a rail-resident panel inside `_nav_rail.html.j2` below the chapter list (Option 1). The supersedure quotes the human's commit-gate framing verbatim as the empirical evidence justifying the move and encodes the load-bearing principle "visibility follows scroll-position-cost." Pending human acceptance of ADR-028 at the `/auto` gate; on Accepted, this issue's Status flips to `Resolved by ADR-028` and ADR-023's Status flips to `Superseded by ADR-028`.
 
 ## Question
 

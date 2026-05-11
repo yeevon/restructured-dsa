@@ -18,6 +18,7 @@ Key responsibilities:
 
 from __future__ import annotations
 
+import functools
 import html as _html_mod
 import logging
 import re
@@ -676,6 +677,7 @@ def _is_starred_macro(macro_node) -> bool:
 
 # ---- Section extraction ----
 
+@functools.lru_cache(maxsize=64)
 def extract_sections(chapter_id: str, latex_body: str) -> list[dict[str, Any]]:
     """
     Parse a LaTeX document body string and return a list of Section dicts.

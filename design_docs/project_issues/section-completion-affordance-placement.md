@@ -1,8 +1,10 @@
 # Section-completion affordance placement — top-of-section is the wrong moment in the reading flow
 
-**Status:** Open
+**Status:** Resolved by ADR-027 (pending acceptance — Proposed 2026-05-10 in TASK-011 `/design`)
 **Surfaced:** 2026-05-10 (TASK-010 human post-commit review)
 **Decide when:** when Section-completion or related per-Section UI work next surfaces (e.g. completion-history surfacing, Mandatory-only progress view, derived chapter-progress display, Quiz-bootstrap). Not a blocker for shipping TASK-010.
+
+**Resolution note (2026-05-10, TASK-011 `/design`):** Proposed ADR-027 supersedes ADR-025 §Template-placement, relocating the per-Section completion form from inline-next-to-`<h2 class="section-heading">` (top-of-Section) to a new `<div class="section-end">` wrapper at the end of each `<section>` block (Option 1; Option 2's two-element split rejected because the existing `.section-complete` Section-wide CSS class already provides at-a-glance state). The supersedure quotes the human's post-commit framing verbatim as the empirical evidence justifying the move and encodes the load-bearing principle "action affordances follow the cognitive sequence, not the template scope." Pending human acceptance of ADR-027 at the `/auto` gate; on Accepted, this issue's Status flips to `Resolved by ADR-027` and ADR-025's Status flips to `Superseded by ADR-027`.
 
 ## Question
 

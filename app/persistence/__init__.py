@@ -15,6 +15,7 @@ Public API exported by this package:
   - unmark_section_complete(section_id) -> None
   - is_section_complete(section_id) -> bool
   - list_complete_section_ids_for_chapter(chapter_id) -> list[str]
+  - count_complete_sections_per_chapter() -> dict[str, int]
 """
 
 from app.persistence.connection import init_schema
@@ -25,6 +26,7 @@ from app.persistence.section_completions import (
     unmark_section_complete,
     is_section_complete,
     list_complete_section_ids_for_chapter,
+    count_complete_sections_per_chapter,
 )
 
 __all__ = [
@@ -37,4 +39,5 @@ __all__ = [
     "unmark_section_complete",
     "is_section_complete",
     "list_complete_section_ids_for_chapter",
+    "count_complete_sections_per_chapter",
 ]

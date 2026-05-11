@@ -91,34 +91,48 @@ def test_completion_affordance_present_in_dom(page: Page, live_server: str) -> N
     )
 
 
-def test_section_element_carries_completion_form_inline_with_heading(
+def test_section_element_carries_completion_form_in_section_end_wrapper(
     page: Page, live_server: str
 ) -> None:
     """
-    AC-1 / ADR-025 §Template placement: the completion form must be inline with
-    (inside the same heading row as) the Section heading.
+    AC-1 / ADR-027 §Decision (supersedes ADR-025 §Template-placement):
+    the completion form must live inside a .section-end wrapper at the BOTTOM
+    of each Section block — NOT inline next to the <h2> heading.
 
-    ADR-025: 'The completion form is rendered inside each <section id=...> block,
-    immediately following the <h2 class="section-heading">. The Section structure
-    uses a <div class="section-heading-row"> containing both the <h2> and the form.'
+    ADR-027: 'The completion form moves from inside <div class="section-heading-row">
+    (where it currently sits next to <h2 class="section-heading">) to a new container
+    at the end of each <section> block, after <div class="section-body"> and before
+    the closing </section> tag.'
 
-    Verifies:
-      - `.section-heading-row` wrapper exists.
-      - It contains both `.section-heading` and `.section-completion-form`.
+    Verifies (amended for ADR-027 acceptance in TASK-011):
+      - `.section-heading-row` wrapper is ABSENT (removed per ADR-027).
+      - `.section-end` wrapper exists (the new bottom-of-Section container).
+      - `.section-end` contains the `.section-completion-form`.
+      - `.section-heading` is still present (plain <h2>, no wrapper).
 
-    Trace: AC-1; ADR-025 §Template placement (placement a — inline next to <h2>).
+    Trace: AC-6 TASK-011; ADR-027 §Decision; ADR-027 §CSS class changes.
     """
     page.goto(f"{live_server}/lecture/{CHAPTER_ID}")
     page.wait_for_load_state("domcontentloaded")
 
-    # The heading-row wrapper must exist
+    # ADR-027: .section-heading-row wrapper is REMOVED
     heading_rows = page.locator(".section-heading-row")
-    expect(heading_rows.first).to_be_visible()
+    assert heading_rows.count() == 0, (
+        f".section-heading-row found in DOM with count {heading_rows.count()}. "
+        "ADR-027: .section-heading-row is removed; the heading is now a plain <h2>."
+    )
 
-    # It must contain the heading AND the form
-    first_row = heading_rows.first
-    expect(first_row.locator(".section-heading")).to_be_visible()
-    expect(first_row.locator(".section-completion-form")).to_be_visible()
+    # ADR-027: .section-end wrapper must exist (new bottom-of-Section container)
+    section_end_wrappers = page.locator(".section-end")
+    expect(section_end_wrappers.first).to_be_visible()
+
+    # The .section-end wrapper must contain the completion form
+    first_end = section_end_wrappers.first
+    expect(first_end.locator(".section-completion-form")).to_be_visible()
+
+    # The heading must still exist as a plain <h2 class="section-heading">
+    heading = page.locator(".section-heading").first
+    expect(heading).to_be_visible()
 
 
 # ===========================================================================

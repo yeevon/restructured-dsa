@@ -129,22 +129,27 @@ def _direct_db_list_notes(db_path: str, chapter_id: str) -> list[dict]:
 # ===========================================================================
 # AC-1 — Notes UI affordance (form + notes) is visible on every Chapter page
 #
-# Stronger interpretation: the rendered HTML must contain:
-#   - a <section class="notes-surface"> block (ADR-023 template commitment)
+# Stronger interpretation (amended for ADR-028 supersedure — rail-resident Notes):
+#   - a <section class="rail-notes"> block in the rail (ADR-028: Notes moved to rail)
 #   - a <form ...> element whose action points to /lecture/{chapter_id}/notes
 #   - a <textarea name="body"> inside it
-#   - a <h2 class="notes-heading"> heading (ADR-023 template)
+#   - a <h2 ...> Notes heading (rail-notes-heading class per ADR-028)
 # ===========================================================================
 
 
 @pytest.mark.parametrize("chapter_id", ALL_CHAPTER_IDS)
 def test_notes_ui_present_on_all_12_chapters(chapter_id: str, tmp_path, monkeypatch) -> None:
     """
-    AC-1 (TASK-009): GET /lecture/{chapter_id} for every Chapter shows the Notes UI:
-      - <section class="notes-surface"> block (ADR-023 structural commitment)
-      - <form ... action="/lecture/{chapter_id}/notes"> element
-      - <textarea name="body"> inside the form
-      - <h2 class="notes-heading"> heading
+    AC-1 (TASK-009): GET /lecture/{chapter_id} for every Chapter shows the Notes UI.
+    
+    Amended for ADR-028 (Accepted, TASK-011): Notes section moved from bottom-of-page
+    (<section class="notes-surface">) to rail-resident panel (<section class="rail-notes">).
+    The form and textarea remain; only the container class and location changed.
+    
+      - <section class="rail-notes"> block in the rail (ADR-028: supersedes ADR-023 §Template-surface)
+      - <form ... action="/lecture/{chapter_id}/notes"> element (route unchanged)
+      - <textarea name="body"> inside the form (name unchanged)
+      - Notes heading (rail-notes-heading class, per ADR-028)
 
     Iterates ALL 12 corpus Chapters — not a spot-check.
 
@@ -160,11 +165,18 @@ def test_notes_ui_present_on_all_12_chapters(chapter_id: str, tmp_path, monkeypa
     )
     body = response.text
 
-    # ADR-023: notes section container
-    assert 'class="notes-surface"' in body or "notes-surface" in body, (
-        f"GET /lecture/{chapter_id} — rendered HTML does not contain 'notes-surface' class. "
-        "AC-1/ADR-023: the Notes section (<section class='notes-surface'>) must be present "
-        "in the rendered Lecture page."
+    # ADR-028 (supersedes ADR-023 §Template-surface): rail-resident Notes panel
+    # The old 'notes-surface' class is REMOVED; the new 'rail-notes' class is the commitment.
+    assert "rail-notes" in body, (
+        f"GET /lecture/{chapter_id} — rendered HTML does not contain 'rail-notes' class. "
+        "AC-1/ADR-028 (amended from ADR-023): Notes section moved from bottom-of-page to rail. "
+        "The rail-resident Notes panel uses <section class='rail-notes'> in _nav_rail.html.j2."
+    )
+    # The old 'notes-surface' class must NOT appear (ADR-028: removed)
+    assert "notes-surface" not in body, (
+        f"GET /lecture/{chapter_id} — 'notes-surface' class is still present. "
+        "ADR-028: the bottom-of-page Notes section is removed; 'notes-surface' is renamed "
+        "to 'rail-notes'."
     )
 
     # ADR-023: form pointing at the POST route
@@ -181,10 +193,11 @@ def test_notes_ui_present_on_all_12_chapters(chapter_id: str, tmp_path, monkeypa
         "AC-1/ADR-023: the Notes form must include a textarea named 'body'."
     )
 
-    # ADR-023: notes heading
-    assert "notes-heading" in body or "Notes" in body, (
-        f"GET /lecture/{chapter_id} — rendered HTML does not contain a Notes heading. "
-        "AC-1/ADR-023: the Notes section must have an <h2 class='notes-heading'>."
+    # ADR-028 (amended): rail-notes heading class replaces notes-heading
+    assert "rail-notes-heading" in body or "Notes" in body, (
+        f"GET /lecture/{chapter_id} — rendered HTML does not contain a rail-notes heading. "
+        "AC-1/ADR-028 (amended from ADR-023): the rail Notes panel heading uses "
+        "class='rail-notes-heading' per ADR-028 §CSS file ownership."
     )
 
 

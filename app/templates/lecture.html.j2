@@ -19,8 +19,11 @@
     {% for section in sections %}
     <section id="{{ section.fragment }}"
              class="{% if section.id in complete_section_ids %}section-complete{% endif %}">
-      <div class="section-heading-row">
-        <h2 class="section-heading">{{ section.heading | safe }}</h2>
+      <h2 class="section-heading">{{ section.heading | safe }}</h2>
+      <div class="section-body">
+        {{ section.body_html | safe }}
+      </div>
+      <div class="section-end">
         <form class="section-completion-form" method="post"
               action="/lecture/{{ chapter_id }}/sections/{{ section.section_number }}/complete">
           {% if section.id in complete_section_ids %}
@@ -38,38 +41,8 @@
           {% endif %}
         </form>
       </div>
-      <div class="section-body">
-        {{ section.body_html | safe }}
-      </div>
     </section>
     {% endfor %}
-
-    {# ADR-023: Notes section — appended at bottom of {% block main %} after Sections #}
-    <section class="notes-surface">
-      <h2 class="notes-heading">Notes</h2>
-      {% if notes %}
-        <ul class="notes-list">
-          {% for note in notes %}
-            <li class="note-item">
-              <div class="note-meta">
-                <time class="note-timestamp" datetime="{{ note.created_at }}">{{ note.created_at }}</time>
-              </div>
-              <div class="note-body">{{ note.body }}</div>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="notes-empty">No notes yet — write the first one below.</p>
-      {% endif %}
-
-      <form class="note-form" method="post" action="/lecture/{{ chapter_id }}/notes">
-        <label for="note-body" class="note-form-label">New note</label>
-        <textarea id="note-body" name="body" class="note-form-input"
-                  rows="6" required maxlength="65536"
-                  placeholder="Write a note about this chapter..."></textarea>
-        <button type="submit" class="note-form-submit">Save note</button>
-      </form>
-    </section>
 
   </article>
 {% endblock %}

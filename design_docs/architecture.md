@@ -29,9 +29,10 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 | 020 | Defensive macro-stripping pass in raw-text fallback paths — text-formatting macros do not leak from `_escape(raw)` sites | TASK-008 | 2026-05-10 |
 | 021 | Test assertion files are excluded from the orchestrator's direct-remediation authority granted by ADR-016 — test amendments require a test-writer re-invocation | (workflow refinement) | 2026-05-10 |
 | 022 | Persistence layer — SQLite via stdlib `sqlite3`, `app/persistence/` package boundary, and the Note schema | TASK-009 | 2026-05-10 |
-| 023 | Notes creation/read surface — `POST /lecture/{chapter_id}/notes` form-encoded with PRG redirect, Notes section appended to `lecture.html.j2`, multi-Note list with empty-state caption | TASK-009 | 2026-05-10 |
 | 024 | Section completion schema and persistence module — `section_completions` table (presence ≡ complete) under `app/persistence/section_completions.py` | TASK-010 | 2026-05-10 |
-| 025 | Section completion UI surface — `POST /lecture/{chapter_id}/sections/{section_number}/complete` with `action` form field, inline affordance next to each `<h2 class="section-heading">`, full-page PRG redirect with URL fragment | TASK-010 | 2026-05-10 |
+| 026 | Chapter-level derived progress display — rail-resident "X / Y" decoration + bulk persistence accessor | TASK-011 | 2026-05-10 |
+| 027 | Supersedure of ADR-025 §Template-placement — per-Section completion affordance moves to bottom-of-Section | TASK-011 | 2026-05-10 |
+| 028 | Supersedure of ADR-023 §Template-surface — Notes section moves from bottom-of-page to rail-resident panel | TASK-011 | 2026-05-10 |
 
 ## Proposed ADRs (awaiting human acceptance)
 
@@ -48,8 +49,8 @@ This file is an index of Accepted ADRs only. It does not introduce architectural
 
 | # | Title | Superseded by | Date |
 |---|---|---|---|
-
-(none)
+| 023 | Notes creation/read surface — `POST /lecture/{chapter_id}/notes` form-encoded with PRG redirect, Notes section appended to `lecture.html.j2`, multi-Note list with empty-state caption | ADR-028 (§Template-surface only) | 2026-05-10 |
+| 025 | Section completion UI surface — `POST /lecture/{chapter_id}/sections/{section_number}/complete` with `action` form field, inline affordance next to each `<h2 class="section-heading">`, full-page PRG redirect with URL fragment | ADR-027 (§Template-placement only) | 2026-05-10 |
 
 ## Project structure (high level)
 

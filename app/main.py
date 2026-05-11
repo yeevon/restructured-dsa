@@ -42,6 +42,7 @@ from app.persistence import (
     mark_section_complete,
     unmark_section_complete,
     list_complete_section_ids_for_chapter,
+    count_complete_sections_per_chapter,
 )
 
 # ---- Jinja2 environment ----
@@ -63,6 +64,29 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 # request arrives.  Using startup event would require async; module-level
 # call is fine for sync sqlite3 (ADR-022: no async driver).
 init_schema()
+
+# ---- Section-count cache pre-warm ----
+# discover_chapters() calls extract_sections() (pylatexenc parse) for every
+# Chapter to compute section_count for the rail "X / Y" decoration (ADR-026).
+# Without pre-warming, the FIRST page request pays the full cold-parse cost for
+# all N_chapters at once, violating the 3s-per-chapter performance budget in
+# test_task005.  A single eager call here populates the per-process lru_cache on
+# extract_sections() and the mtime-keyed cache in discovery.py so that all
+# subsequent render requests find warm caches.
+#
+# This is consistent with the existing init_schema() pattern (module-level
+# bootstrap work) and does not violate ADR-007's "request-time scan" rule —
+# subsequent discover_chapters() calls still scan the filesystem at request time;
+# they just find the section-count cache already warm.
+#
+# The try/except swallows errors silently so a broken corpus file at startup does
+# not prevent the server from starting (individual row degradation per ADR-007
+# still applies at request time).
+try:
+    import app.config as _cfg_boot  # noqa: PLC0415
+    discover_chapters(pathlib.Path(_cfg_boot.CONTENT_ROOT))
+except Exception:
+    pass
 
 
 def _get_content_root() -> pathlib.Path:
@@ -96,6 +120,25 @@ def _build_nav_groups(source_root: pathlib.Path) -> dict:
     invalid basename.
     """
     return discover_chapters(source_root)
+
+
+def _attach_progress_counts(nav_groups: dict) -> None:
+    """
+    Attach complete_count to each ChapterEntry in nav_groups, in-place.
+
+    ADR-026: calls count_complete_sections_per_chapter() once (one SQL query)
+    to get all Chapter counts, then attaches each count to the corresponding
+    ChapterEntry. Chapters with zero completions default to 0 (missing key).
+
+    Also clamps complete_count to section_count to prevent orphan-row display
+    anomalies (ADR-026 §Known limitation — orphan/renumber problem).
+    """
+    complete_counts = count_complete_sections_per_chapter()
+    for group_entries in nav_groups.values():
+        for entry in group_entries:
+            raw_count = complete_counts.get(entry.chapter_id, 0)
+            # ADR-026 §orphan clamp: never display X > Y
+            entry.complete_count = min(raw_count, entry.section_count)
 
 
 def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
@@ -157,8 +200,14 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
             detail=f"Chapter discovery error: {exc}",
         )
 
-    # ADR-023: fetch Notes for this Chapter (most-recent-first per ADR-022)
-    notes = list_notes_for_chapter(chapter_id)
+    # ADR-026: attach per-Chapter complete_count to each ChapterEntry in nav_groups.
+    _attach_progress_counts(nav_groups)
+
+    # ADR-028: build rail_notes_context for the rail-resident Notes panel.
+    # On Lecture pages, this is a simple namespace with chapter_id and notes list.
+    # On landing page (GET /), this is None (Notes panel omitted per ADR-028 §Per-Chapter scoping).
+    notes_list = list_notes_for_chapter(chapter_id)
+    rail_notes_context = _RailNotesContext(chapter_id=chapter_id, notes=notes_list)
 
     # ADR-025: fetch the set of completed Section IDs for this Chapter.
     # Passed to the template so each Section's form can reflect the current state.
@@ -173,7 +222,7 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
         sections=sections,
         pre_section_html=pre_section_html,
         nav_groups=nav_groups,
-        notes=notes,
+        rail_notes_context=rail_notes_context,
         complete_section_ids=complete_section_ids,
     )
     return html
@@ -211,6 +260,21 @@ def _parse_pre_section_body(body: str, chapter_id: str) -> str:
     return _nodes_to_html(pre_nodes)
 
 
+class _RailNotesContext:
+    """
+    Simple container for the rail-resident Notes panel context (ADR-028).
+
+    chapter_id: the Chapter whose Notes are displayed.
+    notes: list of Note objects (most-recent-first per ADR-023, unchanged).
+
+    On the landing page (GET /), rail_notes_context is None — the Notes panel
+    is omitted entirely via {% if rail_notes_context %} guard in the template.
+    """
+    def __init__(self, chapter_id: str, notes: list) -> None:
+        self.chapter_id = chapter_id
+        self.notes = notes
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index_page() -> HTMLResponse:
     """
@@ -233,8 +297,12 @@ async def index_page() -> HTMLResponse:
             detail=f"Chapter discovery error: {exc}",
         )
 
+    # ADR-026: attach per-Chapter complete_count to each ChapterEntry in nav_groups.
+    _attach_progress_counts(nav_groups)
+
     template = _jinja_env.get_template("index.html.j2")
-    html = template.render(nav_groups=nav_groups)
+    # ADR-028: rail_notes_context=None on landing page (Notes panel omitted per §Per-Chapter scoping)
+    html = template.render(nav_groups=nav_groups, rail_notes_context=None)
     return HTMLResponse(content=html, status_code=200)
 
 

@@ -1,10 +1,12 @@
 # ADR-023: Notes creation/read surface — `POST /lecture/{chapter_id}/notes` form-encoded with PRG redirect, Notes section appended to `lecture.html.j2`, multi-Note list with empty-state caption
 
-**Status:** `Accepted` (2026-05-10)
+**Status:** `Superseded by ADR-028` (§Template-surface only — see ADR-028 for the rail-resident replacement; the route shape, form-handling, empty-state, multiple-Note display order, submit-feedback shape, and validation rules from this ADR remain in force)
+Original Acceptance: 2026-05-10
 **Date:** 2026-05-10
 **Task:** TASK-009
 **Resolves:** none (no project_issue filed against this question; the surface question is forced inline by TASK-009)
 **Supersedes:** none
+**Superseded by:** `ADR-028` (Auto-accepted by /auto on 2026-05-10)
 
 ## Context
 

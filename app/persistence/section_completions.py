@@ -140,6 +140,35 @@ def is_section_complete(section_id: str) -> bool:
     return row is not None
 
 
+def count_complete_sections_per_chapter() -> dict[str, int]:
+    """
+    Return a mapping of {chapter_id: complete_section_count} for every
+    Chapter that has at least one complete Section.
+
+    Chapters with zero complete Sections are NOT in the returned dict —
+    callers must default to 0 for missing keys.
+
+    ADR-026 §Persistence accessor shape: single SQL call (SELECT chapter_id,
+    COUNT(*) FROM section_completions GROUP BY chapter_id). The indexed
+    chapter_id column makes this an efficient GROUP BY.
+
+    MC-7: no user_id predicate (single-user system).
+    MC-10: SQL lives here — not in the caller (ADR-022 / ADR-026 §Package boundary).
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT chapter_id, COUNT(*) AS complete_count "
+            "FROM section_completions "
+            "GROUP BY chapter_id"
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    return {row["chapter_id"]: row["complete_count"] for row in rows}
+
+
 def list_complete_section_ids_for_chapter(chapter_id: str) -> list[str]:
     """
     Return a list of section_id strings for all complete Sections in a Chapter.

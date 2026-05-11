@@ -22,8 +22,62 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.designation import chapter_designation, parse_chapter_number, _PATTERN_A
+from app.parser import extract_sections
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Performance: per-process mtime-keyed section-count cache (ADR-026 §denominator).
+#
+# discover_chapters() is called on every page render.  Each call previously
+# invoked extract_sections() (a full pylatexenc parse) for all 12 Chapter files,
+# making each render O(N_chapters) in parser work regardless of which Chapter was
+# requested.  This caused test_all_chapters_respond_within_time_budget to exceed
+# the 3-second-per-Chapter budget (~3.5s measured; test TASK-005 regression).
+#
+# The fix: cache section counts by (absolute_path_str, mtime_ns).  The source
+# .tex files are read-only to the application (MC-6 / manifest §5).  If they
+# change (during development), the mtime changes and the cache misses cleanly.
+# The cache is module-level and lives for the process lifetime — safe for a
+# single-process uvicorn server.  A uvicorn --reload restart clears it.
+#
+# The cached value is an int (section count) or None (extract_sections raised).
+# None is cached too so the expensive parse is not retried within the same process.
+# ---------------------------------------------------------------------------
+_section_count_cache: dict[tuple[str, int], int | None] = {}
+
+
+def _get_cached_section_count(
+    tex_file: pathlib.Path,
+    chapter_id: str,
+    latex_text: str,
+) -> int | None:
+    """Return cached section count for tex_file, or parse and cache it.
+
+    Cache key: (absolute_path_str, mtime_ns).  Returns None if extract_sections()
+    raises (the None is cached so the parse is not retried within the same process).
+    """
+    try:
+        mtime_ns = tex_file.stat().st_mtime_ns
+    except OSError:
+        mtime_ns = 0
+    key = (str(tex_file), mtime_ns)
+    if key in _section_count_cache:
+        return _section_count_cache[key]
+    try:
+        discovered = extract_sections(chapter_id, latex_text)
+        count: int | None = len(discovered)
+    except Exception as exc:
+        logger.warning(
+            "Discovery: extract_sections failed for %r — %s; "
+            "degrading label_status to 'section_extraction_failed'.",
+            chapter_id,
+            exc,
+        )
+        count = None
+    _section_count_cache[key] = count
+    return count
+
 
 # ADR-007 §display-label: extract \title{...} from each Chapter's preamble.
 # Shared function — reused by both the navigation helper and (via main.py) the
@@ -54,12 +108,19 @@ def extract_title_from_latex(latex_text: str) -> str | None:
 
 @dataclass
 class ChapterEntry:
-    """Per-row data for the navigation surface (ADR-007 helper return shape)."""
+    """Per-row data for the navigation surface (ADR-007 helper return shape).
+
+    ADR-026: section_count is the number of Sections discovered in this Chapter.
+    Used as the denominator (Y) in the rail's "X / Y" progress decoration.
+    Zero if section extraction failed (label_status == "section_extraction_failed").
+    """
     chapter_id: str
     chapter_number: int
     display_label: str
     link_target: str
-    label_status: Literal["ok", "missing_title", "malformed_title"]
+    label_status: Literal["ok", "missing_title", "malformed_title", "section_extraction_failed"]
+    section_count: int = 0   # ADR-026: total Sections discovered; 0 if not yet set
+    complete_count: int = 0  # ADR-026: complete Sections (attached by route handler; not from DB)
 
 
 class DuplicateChapterNumber(ValueError):
@@ -148,6 +209,17 @@ def discover_chapters(
             label_status = "ok"
             display_label = raw_title
 
+        # ADR-026: compute per-Chapter section count (denominator for "X / Y" decoration).
+        # Use the mtime-keyed cache to avoid re-parsing on every page render.
+        section_count = 0
+        if label_status == "ok":
+            cached = _get_cached_section_count(tex_file, basename, latex_text)
+            if cached is None:
+                label_status = "section_extraction_failed"
+                section_count = 0
+            else:
+                section_count = cached
+
         designation = chapter_designation(basename)
         entry = ChapterEntry(
             chapter_id=basename,
@@ -155,6 +227,7 @@ def discover_chapters(
             display_label=display_label,
             link_target=f"/lecture/{basename}",
             label_status=label_status,
+            section_count=section_count,
         )
 
         if designation == "Mandatory":

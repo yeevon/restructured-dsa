@@ -36,12 +36,23 @@ body {
 }
 
 /* ---- Inner rail wrapper ---- */
+/* ADR-028 §Rail integration: flex column so chapter list scrolls and Notes
+   panel sits below it without overflow-y:auto covering the button. */
 .nav-rail-inner {
+  display: flex;
+  flex-direction: column;
   padding: 1rem 0.75rem;
   position: sticky;
   top: 0;
   max-height: 100vh;
+  overflow: hidden;
+}
+
+/* ---- Chapter list scrollable region ---- */
+.nav-rail-chapters {
+  flex: 1 1 auto;
   overflow-y: auto;
+  min-height: 0;
 }
 
 /* ---- Section headings (Mandatory / Optional) ---- */
@@ -125,6 +136,131 @@ body {
   color: #8a7f74;
   font-size: 0.85rem;
   padding: 0.3em 0.5em;
+}
+
+/* ---- Per-Chapter progress decoration (ADR-026) ---- */
+/* .nav-chapter-progress lives in base.css per ADR-008 prefix convention (.nav-*). */
+
+.nav-chapter-progress {
+  display: block;
+  font-size: 0.75rem;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  color: #7a6a5a;
+  padding: 0 0.5em 0.2em;
+  line-height: 1.3;
+}
+
+.nav-chapter-progress--complete {
+  font-weight: bold;
+  color: #2a5a2a;
+}
+
+/* ---- Rail-resident Notes panel (ADR-028) ---- */
+/* All rail-notes-* / rail-note-* classes live in base.css per ADR-008 §CSS file ownership
+   (the Notes surface is now rail-resident; prefix rail-* maps to base.css). */
+
+.rail-notes {
+  flex-shrink: 0;
+  padding: 0.75rem 0.75rem 1rem;
+  border-top: 1px solid #d4cbba;
+  margin-top: 0.5rem;
+}
+
+.rail-notes-heading {
+  font-size: 0.85rem;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a4a3a;
+  margin: 0 0 0.5rem 0;
+}
+
+.rail-notes-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem 0;
+}
+
+.rail-note-item {
+  background: #f7f4ef;
+  border: 1px solid #d4cbba;
+  border-radius: 3px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.rail-note-timestamp {
+  display: block;
+  font-size: 0.72rem;
+  color: #7a6a5a;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  margin-bottom: 0.2rem;
+}
+
+.rail-note-body {
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #2a1e14;
+  word-break: break-word;
+}
+
+.rail-notes-empty {
+  color: #7a6a5a;
+  font-style: italic;
+  font-size: 0.82rem;
+  margin: 0 0 0.6rem 0;
+}
+
+.rail-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rail-note-form-label {
+  font-size: 0.78rem;
+  font-weight: bold;
+  color: #3d3020;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.rail-note-form-input {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.82rem;
+  border: 1px solid #c8bfb0;
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  resize: vertical;
+  background: #fdfaf6;
+  color: #2a1e14;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 4.5rem;   /* ~3 rows at 0.82rem; fallback if field-sizing unsupported */
+  field-sizing: content; /* CSS WD: auto-grow on browsers that support it */
+}
+
+.rail-note-form-input:focus {
+  outline: 2px solid #3d6a6b;
+  border-color: #3d6a6b;
+}
+
+.rail-note-form-submit {
+  align-self: flex-start;
+  background: #3d6a6b;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 0.35em 0.9em;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.rail-note-form-submit:hover {
+  background: #2d5a5b;
 }
 
 /* ---- Landing page header block ---- */

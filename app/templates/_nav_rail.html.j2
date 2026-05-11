@@ -1,23 +1,63 @@
 <div class="nav-rail-inner">
-  <h2 class="nav-section-label" data-designation="Mandatory">Mandatory</h2>
-  <ul class="nav-chapter-list">
-    {% for entry in nav_groups["Mandatory"] %}
-    <li class="nav-chapter-item{% if entry.label_status != 'ok' %} nav-chapter-error{% endif %}">
-      <a href="{{ entry.link_target }}">{{ entry.display_label }}</a>
-    </li>
-    {% else %}
-    <li class="nav-chapter-empty">(none)</li>
-    {% endfor %}
-  </ul>
+  <div class="nav-rail-chapters">
+    <h2 class="nav-section-label" data-designation="Mandatory">Mandatory</h2>
+    <ul class="nav-chapter-list">
+      {% for entry in nav_groups["Mandatory"] %}
+      <li class="nav-chapter-item{% if entry.label_status != 'ok' and entry.label_status != 'section_extraction_failed' %} nav-chapter-error{% endif %}">
+        <a href="{{ entry.link_target }}">{{ entry.display_label }}</a>
+        {% if entry.section_count > 0 %}
+          <span class="nav-chapter-progress{% if entry.complete_count >= entry.section_count %} nav-chapter-progress--complete{% endif %}">
+            {{ entry.complete_count }} / {{ entry.section_count }}
+          </span>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="nav-chapter-empty">(none)</li>
+      {% endfor %}
+    </ul>
 
-  <h2 class="nav-section-label" data-designation="Optional">Optional</h2>
-  <ul class="nav-chapter-list">
-    {% for entry in nav_groups["Optional"] %}
-    <li class="nav-chapter-item{% if entry.label_status != 'ok' %} nav-chapter-error{% endif %}">
-      <a href="{{ entry.link_target }}">{{ entry.display_label }}</a>
-    </li>
+    <h2 class="nav-section-label" data-designation="Optional">Optional</h2>
+    <ul class="nav-chapter-list">
+      {% for entry in nav_groups["Optional"] %}
+      <li class="nav-chapter-item{% if entry.label_status != 'ok' and entry.label_status != 'section_extraction_failed' %} nav-chapter-error{% endif %}">
+        <a href="{{ entry.link_target }}">{{ entry.display_label }}</a>
+        {% if entry.section_count > 0 %}
+          <span class="nav-chapter-progress{% if entry.complete_count >= entry.section_count %} nav-chapter-progress--complete{% endif %}">
+            {{ entry.complete_count }} / {{ entry.section_count }}
+          </span>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="nav-chapter-empty">(none)</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {% if rail_notes_context %}
+  <section class="rail-notes" aria-labelledby="rail-notes-heading">
+    <h2 id="rail-notes-heading" class="rail-notes-heading">Notes</h2>
+    {% if rail_notes_context.notes %}
+      <ul class="rail-notes-list">
+        {% for note in rail_notes_context.notes %}
+          <li class="rail-note-item">
+            <time class="rail-note-timestamp"
+                  datetime="{{ note.created_at }}">{{ note.created_at }}</time>
+            <div class="rail-note-body">{{ note.body }}</div>
+          </li>
+        {% endfor %}
+      </ul>
     {% else %}
-    <li class="nav-chapter-empty">(none)</li>
-    {% endfor %}
-  </ul>
+      <p class="rail-notes-empty">No notes yet — write the first one below.</p>
+    {% endif %}
+
+    <form class="rail-note-form" method="post"
+          action="/lecture/{{ rail_notes_context.chapter_id }}/notes">
+      <label for="rail-note-body" class="rail-note-form-label">New note</label>
+      <textarea id="rail-note-body" name="body" class="rail-note-form-input"
+                rows="3" required maxlength="65536"
+                placeholder="Quick note for this chapter..."></textarea>
+      <button type="submit" class="rail-note-form-submit">Save</button>
+    </form>
+  </section>
+  {% endif %}
 </div>
