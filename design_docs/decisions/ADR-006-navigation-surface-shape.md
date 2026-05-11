@@ -86,7 +86,7 @@ Rejected. Two URLs for the same idea (the project's home + the navigation surfac
 Rejected. This works for TASK-002 in isolation but does not scale: when the second learner-facing surface (e.g., a Notes editor at `GET /notes/...`) lands, the rail will need to be included there too, and every new template will repeat the head/script/styles/rail boilerplate. Introducing the base template now is a small cost paid once; refactoring three or four templates later to share a base is a larger cost paid against task pressure. The architect's job here is to spend a small certain cost now to avoid a larger uncertain cost later.
 
 **F. Single-page application (client-side rail rendered from a JSON endpoint).**
-Rejected. Adds a JavaScript build/serve story the project does not have, and a client-side rendering layer for content the server already has in hand. Manifest §5 (no mobile-first, no remote deployment) and the project's overall "small local FastAPI app" shape do not call for a SPA. ADR-003's pipeline is server-side rendered HTML; the rail is the same.
+Rejected. Adds a JavaScript build/serve story the project does not currently have, plus a client-side rendering layer for content the server already has in hand. Manifest §5 (no mobile-first, no remote deployment) and the project's overall "small local FastAPI app" shape do not call for a SPA. ADR-003's pipeline is server-side rendered HTML; the rail is the same. (This rejects a SPA *architecture* on cost-vs-benefit, not "JavaScript" — JavaScript is part of the available toolkit; see ADR-035.)
 
 ## My recommendation vs the user's apparent preference
 

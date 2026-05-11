@@ -16,6 +16,13 @@ Public API exported by this package:
   - is_section_complete(section_id) -> bool
   - list_complete_section_ids_for_chapter(chapter_id) -> list[str]
   - count_complete_sections_per_chapter() -> dict[str, int]
+
+  ADR-033 Quiz domain (TASK-013):
+  - Quiz                                        — dataclass for a single quizzes row
+  - Question                                    — dataclass for a single questions row
+  - request_quiz(section_id) -> Quiz            — insert status='requested' Quiz row
+  - list_quizzes_for_section(section_id) -> list[Quiz]
+  - list_quizzes_for_chapter(chapter_id) -> dict[str, list[Quiz]]
 """
 
 from app.persistence.connection import init_schema
@@ -27,6 +34,13 @@ from app.persistence.section_completions import (
     is_section_complete,
     list_complete_section_ids_for_chapter,
     count_complete_sections_per_chapter,
+)
+from app.persistence.quizzes import (
+    Quiz,
+    Question,
+    request_quiz,
+    list_quizzes_for_section,
+    list_quizzes_for_chapter,
 )
 
 __all__ = [
@@ -40,4 +54,10 @@ __all__ = [
     "is_section_complete",
     "list_complete_section_ids_for_chapter",
     "count_complete_sections_per_chapter",
+    # ADR-033 Quiz domain
+    "Quiz",
+    "Question",
+    "request_quiz",
+    "list_quizzes_for_section",
+    "list_quizzes_for_chapter",
 ]

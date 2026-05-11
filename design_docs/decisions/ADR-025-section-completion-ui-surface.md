@@ -59,7 +59,7 @@ The route accepts a form-encoded body with a single field `action` whose value i
 - No JSON API. The route serves form-encoded HTML; no `application/json` content negotiation.
 - No batch `POST /lecture/{chapter_id}/sections/complete` route for marking multiple Sections at once. Out of scope; manifest §5 / §7 do not require it.
 
-### Form-handling pattern — synchronous form POST + PRG redirect with URL fragment; no JavaScript
+### Form-handling pattern — synchronous form POST + PRG redirect with URL fragment; no JavaScript needed for this surface
 
 The completion form submits synchronously via the browser's native form handling:
 
@@ -75,7 +75,7 @@ When the Section is already complete, the form renders with `action="unmark"` an
 
 **Why synchronous PRG, not AJAX/HTMX:**
 
-- ADR-023 already commits to the no-JavaScript posture for Notes; mirroring it for completion preserves the project's single form-handling style. Adding HTMX or AJAX for completion would create two form-handling patterns in one template — one with JS, one without — for no offsetting benefit at local-dev scale.
+- ADR-023's Notes surface uses synchronous PRG with no client-side code; mirroring that here keeps a single form-handling style across the two surfaces. Adding HTMX or AJAX for completion would create two form-handling patterns in one template — one with JS, one without — for no offsetting benefit at local-dev scale. (This is "mirror what worked next door," not "JavaScript is forbidden" — see ADR-035; the no-JS recipe is the preference where it is clean and sufficient, not a project rule.)
 - The user's wait between click and re-rendered page is <100ms locally — well below the threshold where partial reloads would be perceptible.
 - Synchronous PRG works without JavaScript. If the human disables JS, the affordance still works.
 - Manifest §6's "AI work asynchronous" is about *AI* work specifically; completion is not AI work; synchronous form submission is the correct shape.
@@ -164,7 +164,7 @@ The user-visible feedback is: the Section they just toggled is in view, with the
 
 - Without the fragment, the page reloads at the top. On a 30-screen Chapter (per the Notes-placement project_issue's empirical chapter-length measurements), the user has to scroll back to find the Section they were just looking at. This is a real UX cost — the completion action becomes "mark, scroll to find what you just marked, confirm."
 - With the fragment, the browser restores the user's scroll position to the Section that was just toggled. The cost is one extra string-format in the route handler.
-- The fragment is a standard HTML anchor behavior — no JS required. It works on every browser the project's no-JS posture (ADR-023) supports.
+- The fragment is a standard HTML anchor behavior — no JS required. It works on every browser, and on the no-JS form-handling shape this surface and the Notes surface (ADR-023) share.
 
 ### Styling — new classes added to `app/static/lecture.css`
 
@@ -219,7 +219,7 @@ Rejected. Query parameters are less self-documenting than path parameters; FastA
 Rejected. Same drawback as C — the parent resource (the Section) belongs in the URL path. The `action` field is metadata about *what to do*; the section identity is metadata about *which resource* — those belong in different parts of the request.
 
 **E. Form pattern: HTMX-style partial reload (POST returns an HTML fragment that swaps into the page).**
-Rejected. Same drawback as ADR-023's HTMX rejection: HTMX adds a top-level static asset and a partial-rendering surface; the project has no JS today; tests would have to cover both the no-JS form path and the HTMX swap path. The full-page reload with fragment-anchored scroll is the lower-cost shape that meets the user need.
+Rejected. Same drawback as ADR-023's HTMX rejection: HTMX adds a top-level static asset and a partial-rendering surface; this surface has no need for it; tests would have to cover both the form path and the HTMX swap path. The full-page reload with fragment-anchored scroll is the lower-cost shape that meets the user need. (Rejected on cost-vs-benefit for this surface, not because client-side code is off the table — see ADR-035.)
 
 **F. Form pattern: client-side `fetch()` returning JSON, with manual DOM update.**
 Rejected. Same as E plus duplicate rendering logic (server-side template + client-side JS rendering).
@@ -260,13 +260,13 @@ The TASK-010 task file forecasts the architect's choice as "**(1)** `POST /lectu
 
 For **template placement**, the task forecasts "**(a) inline in the Section heading (next to `<h2 class="section-heading">`), (b) as a button at the end of each Section's body, (c) floating in the right margin. Architect's forecast: (a) for visibility.**" This ADR aligns — (a) chosen with explicit rationale.
 
-For **state indicator shape**, the task forecasts "**(a) checkbox checked, (b) heading suffix "✓ Complete", (c) section-level CSS class (`.section-complete` adds a green left-border or muted heading color), (d) all of the above. Architect picks.**" This ADR commits to **three of the four** — button text with checkmark glyph (variant of b), section-level CSS class (c), and a button-color modifier (an additional layered indicator the task did not explicitly enumerate). The architect rejects (a) — native `<input type="checkbox">` — because the no-JS submit-on-change requirement is not satisfiable with a native checkbox without JS (see Alternative L). If the human wants a literal checkbox visual style, the implementer can shape the `.section-completion-button` CSS to look checkbox-like (the architectural commitment is the class names, not the precise visual rendering); this is the place to push back at the gate if the literal-checkbox-shape matters more than the no-JS posture.
+For **state indicator shape**, the task forecasts "**(a) checkbox checked, (b) heading suffix "✓ Complete", (c) section-level CSS class (`.section-complete` adds a green left-border or muted heading color), (d) all of the above. Architect picks.**" This ADR commits to **three of the four** — button text with checkmark glyph (variant of b), section-level CSS class (c), and a button-color modifier (an additional layered indicator the task did not explicitly enumerate). The architect rejects (a) — native `<input type="checkbox">` — because a native checkbox does not submit on change without a JS handler, and a `<button type="submit">` inside a form gives the same toggle behavior with no script and no extra element (see Alternative L). If the human wants a literal checkbox visual style, the implementer can shape the `.section-completion-button` CSS to look checkbox-like (the architectural commitment is the class names, not the precise visual rendering); this is the place to push back at the gate if the literal-checkbox-shape matters more than keeping the surface script-free here. (Script-free is the preference here because it is clean and sufficient — not a project rule; see ADR-035.)
 
 One area of mild push beyond the task's forecast: this ADR introduces the **URL fragment in the PRG redirect** (`#section-{section_number}`) so the browser scrolls back to the just-toggled Section. The task does not prescribe; the architect's read is that without the fragment the round-trip becomes "click, scroll back to find what you clicked, confirm" on a long Chapter — a real UX cost that the fragment fixes for one extra string-format. If the human prefers the simpler top-of-page redirect, this is the place to push back.
 
 A second area of mild push: this ADR requires a **small parser addition** — adding a `section_number` field (e.g., `"1-1"`) to each Section dict returned by `extract_sections()`. The derivation is one line (strip `"section-"` from the existing `fragment`); the implementer adds it inside `app/parser.py`. This is technically a parser change in service of a UI surface. The architect's read is that this is acceptable because (a) the parser is the source of Section metadata and the new field is a pure derivation from existing data, (b) the alternative (deriving `section_number` in the template via Jinja2 string-manipulation) is less testable and uses Jinja2 as a string-processing engine for data the parser should already be returning. If the human prefers the template-derivation shape, that is also acceptable — the architectural commitment is that the route URL contain the section number; the source of the value is implementer-tunable.
 
-A third area: this ADR rejects the **literal checkbox affordance** (`<input type="checkbox">`) because it would require JavaScript for submit-on-change behavior, which the project's no-JS posture (ADR-023) forecloses. If the human strongly prefers the checkbox visual, the alternatives are (i) shape the button CSS to look checkbox-like (still a button under the hood; preserves no-JS), or (ii) introduce a `<button>` with a `<svg>` checkmark icon (no new dependency; preserves no-JS). Neither requires JavaScript.
+A third area: this ADR rejects the **literal checkbox affordance** (`<input type="checkbox">`) because it would need a JS handler for submit-on-change, which buys nothing over a `<button type="submit">` that submits natively. If the human strongly prefers the checkbox visual, the alternatives are (i) shape the button CSS to look checkbox-like (still a button under the hood; no script needed), or (ii) introduce a `<button>` with a `<svg>` checkmark icon (no new dependency; no script needed). (Avoiding the JS handler here is the cleaner option, not a project rule — see ADR-035.)
 
 I am NOT pushing back on:
 
@@ -275,7 +275,7 @@ I am NOT pushing back on:
 - The Lecture-source-read-only rule (manifest §6, MC-6) — honored: the completion route writes only via `app/persistence/` (ADR-024).
 - The ADR-006 navigation surface — preserved: the rail is unchanged.
 - The ADR-008 CSS architecture — extended faithfully: new classes go in `lecture.css` per the prefix convention.
-- The ADR-023 form-handling precedent — extended faithfully: synchronous PRG, no-JS, server-side validation.
+- The ADR-023 form-handling precedent — extended faithfully: synchronous PRG, no client-side code needed, server-side validation. (Mirroring what worked for Notes, not honoring a "no JS" rule — see ADR-035.)
 - TASK-010's "Out of scope" enumeration (Chapter-level progress, Mandatory-only views, rail indicators, Quiz integration, timestamps in UI, confirmation dialogs) — honored.
 - The Notes-placement Open project_issue — explicitly NOT addressed here per the issue's own Decide-when ("bundle with next Notes-related task"). This task is not Notes-related.
 
@@ -331,7 +331,7 @@ Previously-dormant rule activated by this ADR: none new. (MC-7 architecture port
 - A completion toggle that does not persist to the database. The synchronous PRG + persistence-call shape forces the persistence step.
 - A completion affordance outside a Section's `<section>` block. The template structure forces per-Section co-location.
 - A completion route that operates on multiple Sections at once. The route shape forces per-Section.
-- A completion toggle that requires JavaScript. The form works without JS by construction.
+- A completion toggle that *requires* JavaScript to function at all. The form works without JS by construction; a later ADR could add progressive-enhancement JS on top, but this surface's baseline is the working no-JS form. (Not a ban on client-side code — see ADR-035.)
 - Auth-gated completion. Manifest §5/§6 forbids; this ADR codifies the no-auth posture at the route layer.
 - A completion record whose author is recorded. No `user_id` is ever sent or stored.
 

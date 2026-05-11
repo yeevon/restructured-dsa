@@ -64,6 +64,68 @@ CREATE TABLE IF NOT EXISTS section_completions (
 
 CREATE INDEX IF NOT EXISTS idx_section_completions_chapter_id
     ON section_completions (chapter_id);
+
+-- ---------------------------------------------------------------------------
+-- Quiz domain tables (ADR-033 §Table set + §Schema bootstrap)
+-- All five tables; CREATE TABLE IF NOT EXISTS = idempotent (ADR-022 migration
+-- story).  Foreign-key enforcement is enabled below via PRAGMA foreign_keys.
+-- ---------------------------------------------------------------------------
+
+-- A Quiz: scoped to exactly one Section (manifest §5/§6/§7, MC-2).
+CREATE TABLE IF NOT EXISTS quizzes (
+    quiz_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id TEXT    NOT NULL,
+    status     TEXT    NOT NULL DEFAULT 'requested',
+    created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quizzes_section_id ON quizzes (section_id);
+
+-- The Question Bank for a Section (manifest §8 "never deleted").
+-- Every Question is a hands-on coding task (manifest §5/§7):
+--   prompt = coding-task description; topics = '|'-delimited tag list.
+-- NO choice/recall/describe columns.
+CREATE TABLE IF NOT EXISTS questions (
+    question_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id  TEXT    NOT NULL,
+    prompt      TEXT    NOT NULL,
+    topics      TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_questions_section_id ON questions (section_id);
+
+-- Membership: which Questions a Quiz is composed of (many-to-many).
+-- A Question MAY appear in multiple Quizzes for its Section (manifest §8).
+CREATE TABLE IF NOT EXISTS quiz_questions (
+    quiz_id     INTEGER NOT NULL REFERENCES quizzes (quiz_id),
+    question_id INTEGER NOT NULL REFERENCES questions (question_id),
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (quiz_id, question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_question_id ON quiz_questions (question_id);
+
+-- A Quiz Attempt (manifest §8).
+-- status enum names a failure state (MC-5): 'grading_failed'.
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    attempt_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    quiz_id      INTEGER NOT NULL REFERENCES quizzes (quiz_id),
+    status       TEXT    NOT NULL DEFAULT 'in_progress',
+    created_at   TEXT    NOT NULL,
+    submitted_at TEXT,
+    graded_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_id ON quiz_attempts (quiz_id);
+
+-- Per-Question state within an Attempt (MC-8: wrong-answer-replay history).
+-- is_correct and explanation are NULL until graded.
+CREATE TABLE IF NOT EXISTS attempt_questions (
+    attempt_id  INTEGER NOT NULL REFERENCES quiz_attempts (attempt_id),
+    question_id INTEGER NOT NULL REFERENCES questions (question_id),
+    response    TEXT,
+    is_correct  INTEGER,
+    explanation TEXT,
+    PRIMARY KEY (attempt_id, question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_attempt_questions_question_id ON attempt_questions (question_id);
 """
 
 
@@ -88,6 +150,11 @@ def get_connection() -> sqlite3.Connection:
     _ensure_data_dir(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    # ADR-033 §Schema bootstrap: enable foreign-key enforcement so REFERENCES
+    # clauses on quiz_questions / attempt_questions / quiz_attempts are enforced.
+    # notes and section_completions have no REFERENCES clauses so this is a no-op
+    # for them. (ADR-033 §Schema bootstrap: 'recommended, not a hard requirement'.)
+    conn.execute("PRAGMA foreign_keys = ON")
     # Idempotent schema bootstrap on every fresh connection
     conn.executescript(_SCHEMA_SQL)
     conn.commit()

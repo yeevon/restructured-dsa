@@ -129,14 +129,14 @@ The architectural commitments are:
 
 The textarea sizing approach from ADR-028 is **retained verbatim in shape**: default `rows="3"`, CSS `field-sizing: content` for browsers that support it (with a `min-height` matching the 3-row default and a `max-height` cap), `resize: vertical` as the universal fallback, `width: 100%`, the `Save` button full-width below the textarea, **no JavaScript**. The only change is that the new "narrowest rail width" floor is the RHS rail's narrowest width (forecast `220px` — the same `minmax(...)` floor as the LHS rail, so the floor is effectively unchanged). If the RHS rail's *maximum* width is set wider than the LHS rail's `18rem` (e.g., `22rem`), the implementer may tune the textarea's comfortable-at-default size upward within ADR-028's commitment that it be usable at the narrowest width and that no JS is introduced for resizing.
 
-The architectural commitment is: the textarea is usable at the RHS rail's narrowest width; it grows on browsers that support `field-sizing: content`; it falls back gracefully (`resize: vertical`) on browsers that do not; **no JavaScript is introduced.** The no-JS posture (ADR-023 / ADR-025 / ADR-027 / ADR-028, and — pending the parallel ADR-030 — still in force for the completion toggle) is preserved by this ADR entirely.
+The architectural commitment is: the textarea is usable at the RHS rail's narrowest width; it grows on browsers that support `field-sizing: content`; it falls back gracefully (`resize: vertical`) on browsers that do not; **no JavaScript is introduced** — the CSS-only solution is clean and sufficient for this. (This follows the no-JS form-handling shape ADR-023 / ADR-025 / ADR-027 / ADR-028 used because it was clean there — not because "no JavaScript" is a project rule; see ADR-035. Framing correction; the textarea-sizing decision itself is unchanged.)
 
 ### What of ADR-028 is retained
 
 ADR-028 made many decisions; this supersedure targets only §Rail-integration and the part of §Template-surface that fixed *which rail* the panel sits in. The following remain Accepted as written by ADR-028:
 
 - **Route shape.** `POST /lecture/{chapter_id}/notes` form-encoded; PRG 303 redirect to `GET /lecture/{chapter_id}`. Unchanged.
-- **Form-handling pattern.** Synchronous PRG with no JavaScript. Unchanged.
+- **Form-handling pattern.** Synchronous PRG; no JavaScript needed for this surface. Unchanged.
 - **Validation.** Route handler trims body; rejects empty/whitespace-only with 400; rejects unknown `chapter_id` with 404; rejects bodies > 64 KiB with 413. Unchanged.
 - **Multiple-Note display order.** Most-recent-first (`ORDER BY created_at DESC`). Unchanged.
 - **Submit-feedback shape.** Full-page reload via PRG; no flash, no toast, no URL fragment. Unchanged. (The PRG redirect re-renders the Lecture page; the now-RHS-resident Notes panel re-renders with the new Note at the top of the list — same feedback shape, in the new column.)
@@ -234,7 +234,7 @@ This ADR **aligns with the forecast** (Option 1 — three-column grid; Notes pan
 - **The new RHS rail partial:** `_notes_rail.html.j2` (the forecast filename), included by `base.html.j2` alongside `_nav_rail.html.j2`; the RHS wrapper is `<aside class="notes-rail">` (forecast). Implementer-tunable filename/element.
 - **Per-Chapter scoping / landing-page degradation:** the `{% if rail_notes_context %}` guard is retained; the grid degrades to two columns on `GET /` via a `page-layout` modifier class (the forecast mechanism). Aligns with the task's "the grid must degrade gracefully on the landing page" concern.
 - **CSS class names:** **keep** the `rail-notes-*` / `rail-note-*` prefix (no rename); add `.notes-rail` for the new RHS wrapper. The task says "Architect picks; either way the classes stay in `base.css`." The architect picks "keep" — the rename's churn outweighs the clarity gain, and the new wrapper class supplies the disambiguation. If the human prefers the rename, push back at the gate.
-- **Textarea sizing:** **retain ADR-028's approach verbatim** (`rows="3"` + `field-sizing: content` + `resize: vertical` + no JS), with the RHS rail's narrowest width as the new floor. The architect explicitly does **not** introduce JavaScript for the textarea; the no-JS posture is preserved by this ADR entirely.
+- **Textarea sizing:** **retain ADR-028's approach verbatim** (`rows="3"` + `field-sizing: content` + `resize: vertical` + no JS needed), with the RHS rail's narrowest width as the new floor. The architect does **not** introduce JavaScript for the textarea because the CSS-only solution is clean and sufficient — not because JS is forbidden (see ADR-035).
 
 For **citation discipline**, this ADR cites ADR-028 in `Supersedes:`, quotes the human's post-commit framing verbatim from the issue file ("i said put notes in in LHS rail when i mean RHS rail where there is alot of empty realestate, i take the blame for that"), and explains that ADR-028's reasoning was correct given the brief it was given but the brief had the LHS/RHS mix-up — and that this supersedure does *not* re-encode a new principle, it corrects the application of ADR-028's existing "visibility follows scroll-position-cost" principle.
 
@@ -247,7 +247,7 @@ I am NOT pushing back on:
 - The single-user posture (manifest §5 / §6 / §7) — preserved.
 - The read-only Lecture source rule (manifest §6, MC-6) — preserved (template + CSS only).
 - The persistence-boundary rule (MC-10) — preserved (no DB code changes).
-- The no-JS commitment (ADR-023 / ADR-025 / ADR-027 / ADR-028) — preserved (this supersedure is template + CSS only; the textarea growth is CSS-only on supporting browsers).
+- The no-JS form-handling shape (ADR-023 / ADR-025 / ADR-027 / ADR-028) — followed here too; this supersedure is template + CSS only, the textarea growth is CSS-only on supporting browsers, no client-side code is needed. (Not a project invariant — see ADR-035.)
 - ADR-006 / ADR-007 (navigation surface, chapter discovery/labelling/ordering) — preserved; the LHS rail's chapter list, M/O grouping, and ordering are untouched.
 - ADR-008 (CSS architecture) — extended faithfully (new `notes-rail` and `page-layout--no-notes` classes go in `base.css` per the prefix convention; `lecture.css` untouched).
 - ADR-026 (Chapter progress decoration) — preserved; the LHS rail still carries the `nav-chapter-progress` "X / Y" decoration on each chapter row.
@@ -303,7 +303,7 @@ Previously-dormant rule activated by this ADR: none.
 - The Notes panel inside `_nav_rail.html.j2` (the LHS rail). The supersedure moves it out.
 - A two-column layout on Lecture pages. Lecture pages are now three-column (the landing page stays two-column).
 - A Notes UI on the landing page. The `{% if rail_notes_context %}` guard (retained) suppresses it.
-- A Notes UI that requires JavaScript. The supersedure preserves the no-JS commitment entirely.
+- A Notes UI that *requires* JavaScript to function. The supersedure keeps the working no-JS form as the baseline (a later ADR could layer progressive-enhancement JS on top). (Not a ban on client-side code — see ADR-035.)
 - An affordance placement that ignores which surface has the real estate. The corrected application of ADR-028's principle now governs.
 
 **Future surfaces this ADR pre-positions:**
@@ -317,9 +317,9 @@ Previously-dormant rule activated by this ADR: none.
 
 **Supersedure path if this proves wrong:**
 
-- If the three-column layout proves too tight on common desktop widths → a future ADR widens the main column band or narrows the RHS rail, or makes the RHS rail collapsible (potentially with JS introduced by its own gated ADR). Cost: one `base.css` rule; bounded.
+- If the three-column layout proves too tight on common desktop widths → a future ADR widens the main column band or narrows the RHS rail, or makes the RHS rail collapsible (CSS-only if clean, JS via its own ADR if the interaction needs it). Cost: one `base.css` rule; bounded.
 - If reading-adjacent (right) placement proves worse than left for some workflow → a future ADR moves the Notes panel back to the LHS column. Cost: swap two `{% include %}` lines + one grid rule; bounded.
 - If the per-Chapter scoping (omit on landing) proves confusing once there are two rails → a future ADR introduces the "select a Chapter" placeholder for the landing-page RHS column. Bounded.
-- If the no-JS commitment proves untenable for rail-Notes UX → a future ADR introduces JS infrastructure as a project-wide commitment (the same threshold ADR-030 weighs for the completion toggle). The rail-Notes shape consumes whatever JS infrastructure that ADR commits to.
+- If the no-JS Notes shape proves limiting for some workflow → a future ADR adds the client-side JavaScript that workflow needs, with whatever asset infrastructure it requires. The rail-Notes shape consumes whatever that ADR commits to. (See ADR-032, which already forecasts the project's first client-side JS for a related Notes-save concern, and ADR-035, which establishes JavaScript as part of the available toolkit.)
 
 The supersedure is reversible (swap the two rail includes, restore the two-column grid, move the `<section>` back into `_nav_rail.html.j2`) at low cost if the new placement also proves wrong. The empirical evidence from the human's post-commit review is the justification for this supersedure; future evidence is the justification for any subsequent supersedure.

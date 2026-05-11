@@ -210,7 +210,8 @@ td, th {
   margin-bottom: 1rem;
   border-top: 1px solid #c8bfb0;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   scroll-margin-top: 50vh; /* ADR-031: implementer-tunable; positions .section-end
                                ≈ at the center of the viewport after fragment navigation,
                                matching where Playwright's scroll_into_view_if_needed
@@ -274,4 +275,88 @@ td, th {
 
 .section-complete .section-heading {
   color: #2a5a2a;
+}
+
+/* ---- Per-Section Quiz surface (ADR-034 / ADR-008: section-quiz-* → lecture.css) ----
+   ADR-034 §CSS: '.section-quiz-* namespace in lecture.css per ADR-008'.
+   The block lives inside .section-end after the completion form.
+   No new CSS file; no base.css change (ADR-034 §CSS commitment). */
+
+/* The Quiz block wrapper inside .section-end */
+.section-quiz {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #c8bfb0;
+  width: 100%;
+}
+
+/* Quiz block heading */
+.section-quiz-heading {
+  color: #5b7a9c;
+  font-size: 0.9rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem 0;
+}
+
+/* List of Quiz statuses (populated case) */
+.section-quiz-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.5rem 0;
+}
+
+.section-quiz-item {
+  font-size: 0.85rem;
+  padding: 0.2em 0;
+  color: #5a5a5a;
+}
+
+/* Status modifiers — plain-language labels per ADR-034 §Status-label mapping */
+.section-quiz-item--requested,
+.section-quiz-item--generating {
+  color: #8a6b4a;  /* muted amber — pending states */
+}
+
+.section-quiz-item--ready {
+  color: #2a5a2a;  /* green — ready state */
+}
+
+.section-quiz-item--generation_failed {
+  color: #8a2a2a;  /* muted red — failure state (MC-5: surfaced, not fabricated) */
+}
+
+/* Empty-state caption */
+.section-quiz-empty {
+  font-size: 0.85rem;
+  color: #8a8a8a;
+  margin: 0 0 0.5rem 0;
+  font-style: italic;
+}
+
+/* The Quiz-trigger form container */
+.section-quiz-form {
+  margin: 0;
+  padding: 0;
+}
+
+/* The "Generate a Quiz for this Section" submit button */
+.section-quiz-button {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.78rem;
+  padding: 0.2em 0.65em;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid #5b7a9c;
+  background: #fdfaf6;
+  color: #5b7a9c;
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background 0.15s, color 0.15s;
+}
+
+.section-quiz-button:hover {
+  background: #5b7a9c;
+  color: #fff;
 }

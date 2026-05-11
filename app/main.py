@@ -43,6 +43,8 @@ from app.persistence import (
     unmark_section_complete,
     list_complete_section_ids_for_chapter,
     count_complete_sections_per_chapter,
+    request_quiz,
+    list_quizzes_for_chapter,
 )
 
 # ---- Jinja2 environment ----
@@ -214,6 +216,12 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
     # A single indexed query per request — sub-millisecond at single-user scale.
     complete_section_ids = set(list_complete_section_ids_for_chapter(chapter_id))
 
+    # ADR-034 §render_chapter: one bulk Quiz query per render, mirroring
+    # complete_section_ids / rail_notes_context (ADR-024 / ADR-028 pattern).
+    # Returns {section_id: [Quiz, ...]} for every Section with >=1 Quiz.
+    # Template defaults missing keys to [] (empty-state for Sections with no Quizzes).
+    section_quizzes_by_id = list_quizzes_for_chapter(chapter_id)
+
     template = _jinja_env.get_template("lecture.html.j2")
     html = template.render(
         chapter_id=chapter_id,
@@ -224,6 +232,7 @@ def render_chapter(chapter_id: str, source_root: str | None = None) -> str:
         nav_groups=nav_groups,
         rail_notes_context=rail_notes_context,
         complete_section_ids=complete_section_ids,
+        section_quizzes_by_id=section_quizzes_by_id,
     )
     return html
 
@@ -471,6 +480,76 @@ async def toggle_section_complete(
     # clicked — with no JavaScript.
     # ADR-030's load-bearing principle ("the response to a reading-flow action must
     # not relocate the user") is retained; ADR-031's mechanism delivers it faithfully.
+    return RedirectResponse(
+        url=f"/lecture/{chapter_id}#section-{section_number}-end",
+        status_code=303,
+    )
+
+
+@app.post("/lecture/{chapter_id}/sections/{section_number}/quiz")
+async def request_quiz_route(
+    chapter_id: str,
+    section_number: str,
+) -> RedirectResponse:
+    """
+    POST /lecture/{chapter_id}/sections/{section_number}/quiz
+
+    ADR-034 §Quiz-trigger route: the natural sibling of POST .../sections/{n}/complete.
+    Validates the chapter_id and section_number, then calls request_quiz() to insert
+    a status='requested' Quiz row (no AI call, no background job), and PRG-redirects.
+
+    ADR-033 §The `requested` status: the row is honestly "we recorded your request"
+    — not a fabricated Quiz, not a finished Quiz (MC-5 / manifest §6).
+
+    MC-1: no LLM SDK call, no ai-workflows invocation.
+    MC-6: never writes to content/latex/.
+    MC-7: no user_id, no auth, no session.
+    MC-9: fires ONLY on the explicit user click — no background job, no auto-trigger.
+    MC-10: no sqlite3 import here — only in app/persistence/.
+
+    Returns:
+      303 — success (PRG redirect to #section-{section_number}-end anchor)
+      404 — chapter_id is not a known corpus Chapter
+      404 — section_number does not correspond to a known Section in this Chapter
+    """
+    # --- Validate chapter_id (mirrors ADR-023 / ADR-024 / ADR-025 pattern) ---
+    source_root = _get_content_root()
+    tex_path = pathlib.Path(source_root) / f"{chapter_id}.tex"
+    if not tex_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter not found: {chapter_id!r}",
+        )
+
+    # --- Validate section_number against the parsed Section set (ADR-034 §Quiz-trigger route) ---
+    latex_text = tex_path.read_text(encoding="utf-8")
+    try:
+        sections = extract_sections(chapter_id, latex_text)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Section ID derivation failed for {chapter_id!r}: {exc}",
+        )
+
+    # Compose the full Section ID from path parameters (ADR-002 §Section identity)
+    section_id = f"{chapter_id}#section-{section_number}"
+
+    known_section_ids = {s["id"] for s in sections}
+    if section_id not in known_section_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section not found: {section_id!r} in chapter {chapter_id!r}",
+        )
+
+    # --- Persist: insert a status='requested' Quiz row (ADR-033 / ADR-034) ---
+    # No AI call; no background job; nothing fabricated (MC-1, MC-5, MC-9).
+    request_quiz(section_id)
+
+    # --- PRG redirect to GET /lecture/{chapter_id}#section-{section_number}-end ---
+    # ADR-034 §Quiz-trigger route + ADR-031 (no-relocate mechanism reused unchanged):
+    # the .section-end wrapper (id="section-{n-m}-end") already carries a large
+    # scroll-margin-top in lecture.css; the redirect lands the user back where they
+    # clicked with no JavaScript (ADR-030's principle, retained by ADR-031).
     return RedirectResponse(
         url=f"/lecture/{chapter_id}#section-{section_number}-end",
         status_code=303,

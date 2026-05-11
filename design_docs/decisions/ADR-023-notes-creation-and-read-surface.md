@@ -45,9 +45,9 @@ The Lecture page route (`GET /lecture/{chapter_id}`, owned by ADR-003 and ADR-00
 - No `PUT/PATCH/DELETE /notes/{note_id}` routes. Edit / delete are out of TASK-009 scope.
 - No JSON API. The route serves form-encoded HTML; no `application/json` content negotiation.
 
-### Form-handling pattern — synchronous form POST + PRG redirect; no JavaScript
+### Form-handling pattern — synchronous form POST + PRG redirect; no JavaScript needed for this surface
 
-The form submits synchronously via the browser's native form handling: `<form method="post" action="/lecture/{chapter_id}/notes">`. There is no `fetch()`, no `XMLHttpRequest`, no HTMX, no client-side framework. On submit the browser issues the POST, follows the 303 redirect, and renders the resulting GET response — a full page reload.
+The form submits synchronously via the browser's native form handling: `<form method="post" action="/lecture/{chapter_id}/notes">`. There is no `fetch()`, no `XMLHttpRequest`, no HTMX, no client-side framework — none is needed for this surface, which is what this ADR decides; it does **not** declare a project-wide "no JavaScript" rule (there is none — see ADR-035). On submit the browser issues the POST, follows the 303 redirect, and renders the resulting GET response — a full page reload.
 
 **Why synchronous PRG, not AJAX/HTMX:**
 
@@ -138,7 +138,7 @@ After successful `POST /lecture/{chapter_id}/notes`, the user sees:
 
 There is no flash message, no toast, no inline status indicator, no URL fragment. The new Note's appearance at the top of the list is the user-visible feedback that the submission succeeded.
 
-**Why no flash message:** flash messaging requires either (a) a session/cookie store to round-trip the message, which contradicts manifest §6 (no session) and adds a session-handling complexity tier; or (b) a URL fragment (`#note-saved`) that JavaScript reads on load, which contradicts the no-JS commitment above. The new-Note-appears-at-top feedback is direct and sufficient.
+**Why no flash message:** flash messaging requires either (a) a session/cookie store to round-trip the message, which contradicts manifest §6 (no session) and adds a session-handling complexity tier; or (b) a URL fragment (`#note-saved`) that JavaScript reads on load, which would add a client-side script this surface otherwise has no need for (not a hard "no" — see ADR-035 — just unwarranted for a feedback cue the new-Note-appears-at-top placement already supplies). The new-Note-appears-at-top feedback is direct and sufficient.
 
 ### Styling — new classes added to `app/static/lecture.css`
 

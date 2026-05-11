@@ -21,7 +21,7 @@ Chromium does **not** preserve scroll on the `POST → 303 → GET /lecture/{cha
 The human resolved the stop (Run 007) by choosing **neither** of ADR-030's two documented paths:
 
 - **Not Option 1** ("no fragment"). It is empirically the worst of the candidates — Chromium snaps the user to the top of the *whole page*, a far worse relocation than the original `#section-{n}` anchor's "snap to the Section heading."
-- **Not Option 2** (client-side JavaScript async toggle). The human's framing at the stop: *"a bunch of unneeded javascript for what we're building"* — for a single-user, local-only lecture reader, a `fetch()` handler + DOM-update path + a permanent no-JS-posture supersedure + Playwright JS-on/JS-off test variants is disproportionate to the problem. ADR-030 itself notes the no-JS PRG path would have to be retained as the JS-off fallback anyway, so Option 2 is *more* code, not less.
+- **Not Option 2** (client-side JavaScript async toggle). The human's framing at the stop: *"a bunch of unneeded javascript for what we're building"* — for a single-user, local-only lecture reader, a `fetch()` handler + DOM-update path + a client-side asset + Playwright JS-on/JS-off test variants is disproportionate to the problem. ADR-030 itself notes the no-JS PRG path would have to be retained as the JS-off fallback anyway, so Option 2 is *more* code, not less. (The objection is "this doesn't need JavaScript here," not "JavaScript is off-limits" — see ADR-035.)
 
 Instead the human picked a **no-JavaScript variant of the previously-ruled-out "anchor to the bottom of the Section" family** (the project_issue's Option 4), softened with a CSS trick that removes the ~1-viewport jump that made plain Option 4 "a bit jarring":
 
@@ -82,7 +82,7 @@ The architectural commitments are:
 - The `303 Location` header for the completion toggle carries the `#section-{section_number}-end` fragment — pointing at the bottom-of-Section affordance container, not the Section heading.
 - The `.section-end` wrapper renders with `id="section-{n-m}-end"` so the fragment has a target.
 - `.section-end` carries a large viewport-relative `scroll-margin-top` so fragment navigation lands the wrapper near the bottom of the viewport. The exact value is implementer-tunable within the constraint that the ADR-030 Playwright assertion (`abs(post_scrollY − pre_scrollY) ≤ 200px` after a bottom-of-Section "mark complete" click on a tall Section) passes.
-- The no-JavaScript posture (ADR-023 / ADR-025 / ADR-027 / ADR-028 / ADR-030) is **preserved** — this mechanism introduces no client-side code; it is a one-line route-handler change, a one-attribute template change, and a one-property CSS change.
+- The no-JS form-handling shape the Notes and completion surfaces share (ADR-023 / ADR-025 / ADR-027 / ADR-028 / ADR-030) is **followed** — this mechanism introduces no client-side code; it is a one-line route-handler change, a one-attribute template change, and a one-property CSS change. (Following a clean recipe, not honoring a project rule — see ADR-035; the human's choice here was a deliberate "this doesn't need JavaScript," not the discharge of an invariant.)
 - Everything else about the route (shape, validation, persistence integration, the `action=mark|unmark` dispatch, the 303 status, the state-indicator triad) is unchanged.
 - Everything else about ADR-027's bottom-of-Section placement (the `.section-end` wrapper, its visual-break treatment, the form alignment) is unchanged — this ADR adds an `id` and a `scroll-margin-top` to that wrapper; it does not move or re-style it.
 
@@ -102,7 +102,7 @@ ADR-030 made one decision (§Decision: the no-fragment redirect mechanism) and e
 - **The Playwright regression test requirement** — a Playwright test asserting that, after a "mark complete" click at the bottom-of-Section affordance on a tall Section, the post-reload `window.scrollY` is within a small tolerance (≤ 200px) of the pre-click `window.scrollY`. ADR-030 mandated it as the lock on Chromium's (non-existent) scroll-preservation behavior; under this ADR it becomes the lock on the `scroll-margin-top` value being large enough. The assertion is unchanged; only its docstring/comments need updating (it was failing under ADR-030's mechanism; it should now pass under this ADR's mechanism).
 - **ADR-030's scoping of ADR-025 §Round-trip-return-point as superseded.** ADR-025 §Round-trip-return-point remains `Superseded by ADR-030` — the decision *that the round-trip return point is no longer the `#section-{n}` heading anchor* stands; this ADR only changes *what the new round-trip return point is* (the `.section-end` wrapper with a `scroll-margin-top` offset, rather than "nowhere — no fragment").
 - **ADR-030's "what of ADR-025 is retained" bookkeeping.** The route shape, form-handling pattern, validation, persistence integration, state-indicator triad, bottom-of-Section placement (ADR-027), styling file location, and the `complete_section_ids` template variable all remain Accepted as written by ADR-025 / ADR-027 — ADR-030 enumerated them, ADR-031 does not disturb them.
-- **ADR-030's no-JS commitment.** ADR-030 preserved the no-JS posture; this ADR also preserves it. (The Option 2 / JS-posture-ADR contingency in ADR-030 is now *moot* — the empirical failure that would have triggered it is instead resolved by this no-JS mechanism, per the human's explicit choice. There is no longer a path by which the completion toggle forces client-side JS.)
+- **ADR-030's no-JS form-handling shape.** ADR-030 stayed within it; this ADR also stays within it. (The Option 2 / JS-posture-ADR contingency in ADR-030 is now *moot* — the empirical failure that would have triggered it is instead resolved by this no-JS mechanism, per the human's explicit choice. The completion toggle no longer has any pressure pushing it toward client-side JS — but client-side JS was never forbidden; see ADR-035.)
 
 The supersedure surface is narrow and surgical: the **mechanism** by which the completion route's response leaves the user where they clicked. Everything else in ADR-030 (and ADR-025 / ADR-027) stands.
 
@@ -137,13 +137,13 @@ This ADR fixes only:
 1. The change of the `303 Location` header's fragment from `#section-{section_number}` (ADR-025) / no fragment (ADR-030) to `#section-{section_number}-end` (pointing at the `.section-end` wrapper).
 2. The addition of `id="{{ section.fragment }}-end"` to the `<div class="section-end">` wrapper in `lecture.html.j2`.
 3. The addition of a large viewport-relative `scroll-margin-top` to the `.section-end` rule in `lecture.css` (per ADR-008's `section-*` → `lecture.css` convention), implementer-tunable so the ADR-030 Playwright scroll-delta-≤-200px assertion passes.
-4. The retention of ADR-030's load-bearing principle (unchanged), its Playwright regression test requirement (unchanged assertion, updated docstring), its scoping of ADR-025 §Round-trip-return-point as superseded, its "what of ADR-025 is retained" bookkeeping, and its no-JS commitment.
+4. The retention of ADR-030's load-bearing principle (unchanged), its Playwright regression test requirement (unchanged assertion, updated docstring), its scoping of ADR-025 §Round-trip-return-point as superseded, its "what of ADR-025 is retained" bookkeeping, and the no-JS form-handling shape it stayed within (which this ADR also stays within — not a project rule; see ADR-035).
 5. The test-writer pre-flag for routine ADR-driven test amendment (re-amending the TASK-012 "no fragment" assertions to assert the `#section-{n}-end` fragment; keeping the Playwright scroll-delta assertion).
 
 This ADR does **not** decide:
 
 - Anything about the Notes panel's column placement — that is ADR-029's surface.
-- The adoption of client-side JavaScript. This ADR preserves the no-JS posture; the ADR-030 Option-2 / JS-posture-ADR contingency is rendered moot by this no-JS mechanism (the empirical failure that would have triggered it is resolved here, per the human's explicit choice).
+- The adoption of client-side JavaScript *for the completion toggle*. This ADR's mechanism needs none; the ADR-030 Option-2 / JS-posture-ADR contingency is rendered moot (the empirical failure that would have triggered it is resolved here, per the human's explicit choice). A future ADR could still add it for some other reason — that's a normal step, not a forbidden one; see ADR-035.
 - Moving the completion affordance again. ADR-027 placed it at the bottom of each `<section>` inside the `.section-end` wrapper; that is correct and retained. This ADR adds an `id` and a `scroll-margin-top` to that wrapper; it does not move or re-style it.
 - The exact `scroll-margin-top` value — implementer-tunable within the constraint that the ADR-030 Playwright assertion passes.
 - Any change to the `section_completions` schema (ADR-024) or the route-handler's mark/unmark logic. Only the redirect target's fragment changes (plus a template `id` and a CSS property).
@@ -202,7 +202,7 @@ I am NOT pushing back on:
 - The single-user posture (manifest §5 / §6 / §7) — preserved.
 - The read-only Lecture source rule (manifest §6, MC-6) — preserved (one route-handler line, one template attribute, one CSS property; no source writes).
 - The persistence-boundary rule (MC-10) — preserved (no DB code changes).
-- The no-JS commitment (ADR-023 / ADR-025 / ADR-027 / ADR-028 / ADR-030) — **preserved by this ADR**: the mechanism is route-handler + template + CSS only, no client-side code. (The ADR-030 Option-2 / JS-posture-ADR contingency is now moot.)
+- The no-JS form-handling shape (ADR-023 / ADR-025 / ADR-027 / ADR-028 / ADR-030) — **followed by this ADR**: the mechanism is route-handler + template + CSS only, no client-side code. (Following a clean recipe, not honoring a project rule — see ADR-035; the ADR-030 Option-2 / JS-posture-ADR contingency is now moot.)
 - ADR-008 (CSS architecture) — followed faithfully: the `scroll-margin-top` rule goes on `.section-end` in `lecture.css` per the `section-*` → `lecture.css` prefix convention.
 - ADR-010 (Playwright UI verification) — the binding Chromium target and the existing scroll-delta assertion are honored.
 - ADR-024 (section-completion schema) — preserved; no schema change.
@@ -245,7 +245,7 @@ Previously-dormant rule activated by this ADR: none.
 - Marking (or unmarking) a Section complete from the bottom-of-Section affordance leaves the user ≈ where they clicked — the toggle is a frictionless annotation, not a navigation event. The ADR-030 Playwright scroll-delta assertion (which was failing) now passes.
 - The completion route's redirect carries a self-documenting `#section-{n}-end` fragment that names the affordance the user interacted with — the redirect target is now legible.
 - Future per-Section / per-Chapter PRG-based reading-flow affordances inherit the pattern: anchor the redirect at the affordance the user touched, and offset that element's scroll-snap position (`scroll-margin-top` or equivalent) so it lands back where it was — a no-JS recipe for "the response doesn't relocate the user."
-- The no-JS posture is preserved — the project still has zero client-side JavaScript.
+- This mechanism adds no client-side JavaScript — but that is a fact about this surface, not a project-wide ban (see ADR-035; ADR-032 already forecasts the project's first client-side JS for a related Notes-save concern).
 
 **Becomes more expensive:**
 
@@ -257,17 +257,17 @@ Previously-dormant rule activated by this ADR: none.
 - A completion toggle whose 303 redirect carries the `#section-{n}` *heading* anchor (ADR-025) — superseded by ADR-027 §placement + ADR-030 §principle + ADR-031 §mechanism.
 - A completion toggle whose 303 redirect carries *no* fragment and relies on browser scroll-preservation (ADR-030 Option 1) — empirically refuted; replaced.
 - A reading-flow-action response that relocates the user without naming why relocation is the action's meaning — ADR-030's load-bearing principle (retained here) governs.
-- Client-side JavaScript for the completion toggle (the ADR-030 Option-2 contingency) — moot; resolved by this no-JS mechanism per the human's explicit choice.
+- A *pressure forcing* client-side JavaScript onto the completion toggle (the ADR-030 Option-2 contingency) — moot; the no-relocate behavior is delivered by this no-JS mechanism per the human's explicit choice. (A future ADR could still add progressive-enhancement JS on top if a real need arises — that's allowed, just not needed; see ADR-035.)
 
 **Future surfaces this ADR pre-positions:**
 
 - Quiz-bootstrap's "Quiz this Section" affordance — its response (whatever it is) inherits ADR-030's principle: a reading-flow action's response leaves the user in place unless the action's meaning is navigation; if a PRG round-trip is the mechanism, the redirect anchors at the affordance the user touched (with a `scroll-margin-top` offset) per this ADR's recipe. ADR-027 already forecasts the Quiz affordance living in the same `.section-end` wrapper — which already carries the `id="section-{n}-end"` anchor, so a Quiz affordance there gets the same no-relocate behavior for free.
 - A future "completed on …" timestamp display inside `.section-end` (surfacing the existing `completed_at` column from ADR-024) — its rendering is unaffected; the page re-renders with the user at the bottom of the Section, so the timestamp appears where the user is.
-- If the project ever does adopt client-side JS for some other reason, the completion toggle is a natural candidate for progressive enhancement — but the no-JS PRG path (this ADR's mechanism) remains the baseline, and there is no longer any pressure forcing the JS adoption.
+- If the project adds client-side JS for some other reason (e.g., the ADR-032 Notes-save concern), the completion toggle is a natural candidate for progressive enhancement on top — but the no-JS PRG path (this ADR's mechanism) remains the baseline, and there is no longer any pressure forcing the JS adoption here.
 
 **Supersedure path if this proves wrong:**
 
-- If `scroll-margin-top` proves unreliable in Chromium for the bottom-of-Section landing (caught by the Playwright scroll-delta assertion still failing after value-tuning) → a future ADR revisits the mechanism. The most likely next candidate would be the ADR-030 Option-2 client-side-JS path (now requiring a fresh `> NEEDS HUMAN`-gated JS-posture ADR), or some other no-JS approach. Cost: bounded; the diff is 3 lines.
+- If `scroll-margin-top` proves unreliable in Chromium for the bottom-of-Section landing (caught by the Playwright scroll-delta assertion still failing after value-tuning) → a future ADR revisits the mechanism. The most likely next candidate would be the ADR-030 Option-2 client-side-JS path (its own ADR, deciding where the JS lives and how it's tested and tested-without), or some other no-JS approach. Cost: bounded; the diff is 3 lines.
 - If the `#section-{n}-end` anchor proves to have some other unforeseen UX cost → a future ADR revisits the round-trip shape. Cost: bounded.
 - If ADR-030's load-bearing principle proves too broad (some reading-flow action genuinely *should* relocate the user) → a future ADR carves the exception, naming why relocation is that action's meaning. The principle's burden is "name the reason," not "never relocate."
 

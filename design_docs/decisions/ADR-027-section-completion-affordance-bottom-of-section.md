@@ -29,7 +29,7 @@ ADR-025's reasoning at the time was correct given what was known then: the archi
 
 The decision space (taken from the project_issue's enumerated options, plus consideration of what to retain from ADR-025):
 
-- **Where to move the affordance:** bottom of the Section block (Option 1), or two-element split with a read-only status indicator at top + the action at bottom (Option 2), or keep status quo (Option 3, rejected by the human's framing), or floating affordance (Option 4, rejected because it requires JS, contradicting ADR-025's no-JS commitment).
+- **Where to move the affordance:** bottom of the Section block (Option 1), or two-element split with a read-only status indicator at top + the action at bottom (Option 2), or keep status quo (Option 3, rejected by the human's framing), or floating affordance (Option 4, rejected because it would require JavaScript and asset-build machinery disproportionate to a placement refinement — not because client-side code is forbidden; see ADR-035).
 - **Visual end-of-section break:** an `<hr>` element, a CSS bottom margin/padding rule on `<section>`, a dedicated `.section-end-break` class, a CSS-only border-bottom on `<section>`, or a combination.
 - **Whether to retain a top-of-Section read-only status indicator** (Option 2 in the issue) — preserves the at-a-glance "is this Section complete" affordance the existing top-of-Section button doubles as for already-completed Sections.
 - **CSS class renames and migrations:** what becomes of `.section-heading-row`, `.section-completion-form`, `.section-completion-button`, `.section-completion-button--complete`, `.section-completion-button--incomplete` once placement changes.
@@ -108,7 +108,7 @@ The following classes from ADR-025 are affected:
 ADR-025 made multiple decisions; this supersedure targets only §Template-placement. The following remain Accepted as written by ADR-025:
 
 - **Route shape.** `POST /lecture/{chapter_id}/sections/{section_number}/complete` with form-encoded `action` field. Unchanged.
-- **Form-handling pattern.** Synchronous PRG with no JavaScript. Unchanged.
+- **Form-handling pattern.** Synchronous PRG; no JavaScript is needed for this surface. Unchanged.
 - **Validation.** Route handler validates `chapter_id`, `section_number`, and `action`. Unchanged.
 - **Round-trip return point.** PRG 303 redirect to `GET /lecture/{chapter_id}#section-{section_number}` with the URL fragment for scroll-restoration. Unchanged. Note that the URL fragment now scrolls to the *top* of the Section (the `<section id="...">` anchor); the user lands at the heading, scrolls down through the body, sees the now-flipped state at the bottom — the same scroll-restoration value, with the cognitive flow now correctly ordered.
 - **Persistence integration.** Route handler calls `mark_section_complete` / `unmark_section_complete` from `app/persistence/`. Unchanged.
@@ -175,7 +175,7 @@ Rejected by the human's framing. The project_issue file is the human's empirical
 
 **C. Option 4 from the project_issue: Floating "mark complete" affordance that follows scroll.**
 
-Rejected. Requires JavaScript to determine the currently-in-viewport Section. Contradicts ADR-025's no-JS commitment (and ADR-023's project-wide no-JS posture). Adding JS here would force a project-wide ADR on JS/asset-build-step infrastructure — out of scope and unjustified for a placement refinement.
+Rejected. Requires JavaScript to determine the currently-in-viewport Section, plus the asset-build-step infrastructure to ship it — disproportionate to a placement refinement, and the cleaner no-JS placement (bottom-of-Section) meets the need. (Rejected on cost-vs-benefit, not because client-side code is off the table — see ADR-035; a future surface with a real need for JS introduces it via its own ADR.)
 
 **D. Visual break: `<hr>` element instead of CSS border on `.section-end`.**
 
@@ -226,7 +226,7 @@ I am NOT pushing back on:
 - The single-user posture (manifest §5 / §6 / §7) — preserved.
 - The read-only Lecture source rule (manifest §6, MC-6) — preserved.
 - The persistence-boundary rule (MC-10) — preserved (no DB code changes in this supersedure).
-- The no-JS commitment (ADR-023 / ADR-025) — preserved (the supersedure is template + CSS only).
+- The no-JS form-handling shape the Notes and completion surfaces share (ADR-023 / ADR-025) — followed here too; this supersedure is template + CSS only, needing no client-side code. (Not a project invariant — see ADR-035; the no-JS recipe is the preference where clean and sufficient.)
 - ADR-008 (CSS architecture) — preserved (new `.section-end` class lives in `lecture.css` per the prefix convention).
 
 ## Manifest reading

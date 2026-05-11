@@ -40,6 +40,41 @@
             </button>
           {% endif %}
         </form>
+
+        {# ADR-034: per-Section Quiz block, after the completion form.
+           section_quizzes_by_id keyed by section.id (full ADR-002 composite ID).
+           Empty-state: "No quizzes yet for this Section." (ADR-034 §Empty-state).
+           Populated: plain-language status list — never presents requested/generating
+           as ready/takeable (MC-5 / ADR-034 §What the surface renders). #}
+        <div class="section-quiz">
+          <h3 class="section-quiz-heading">Quizzes</h3>
+          {% set section_quizzes = section_quizzes_by_id.get(section.id, []) %}
+          {% if section_quizzes %}
+            <ul class="section-quiz-list">
+              {% for quiz in section_quizzes %}
+              <li class="section-quiz-item section-quiz-item--{{ quiz.status }}">
+                {% if quiz.status == 'requested' %}
+                  Requested — generation pending
+                {% elif quiz.status == 'generating' %}
+                  Generating&hellip;
+                {% elif quiz.status == 'ready' %}
+                  Ready
+                {% elif quiz.status == 'generation_failed' %}
+                  Generation failed
+                {% else %}
+                  {{ quiz.status }}
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="section-quiz-empty">No quizzes yet for this Section.</p>
+          {% endif %}
+          <form class="section-quiz-form" method="post"
+                action="/lecture/{{ chapter_id }}/sections/{{ section.section_number }}/quiz">
+            <button type="submit" class="section-quiz-button">Generate a Quiz for this Section</button>
+          </form>
+        </div>
       </div>
     </section>
     {% endfor %}
