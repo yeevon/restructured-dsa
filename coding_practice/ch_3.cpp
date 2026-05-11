@@ -4,7 +4,6 @@
 #include <vector>
 #include <algorithm>
 
-void DisplayTopFiveSalespersons(const std::vector<Salesperson>& allSalespersons);
 
 
 int main() {
@@ -25,14 +24,6 @@ int main() {
     // Min-Heap: is a tree that maintains the simple property that a node's key is less than or equal to the node's childrens' keys
 
     // Graph: A graph is a data structure for representing connections amoung items and consits of vertices connected by edges.
-
-
-    std::vector<Salesperson> people = {
-        {"Alice", 5200}, {"Bob", 7800}, {"Carol", 3100},
-        {"Dave", 9100}, {"Eve", 4400}, {"Frank", 6700},
-        {"Grace", 8500}
-    };
-    DisplayTopFiveSalespersons(people);
 
 
     // ADT: abstract data type is a data type described by predefined user operations, such as as "insert data at rear" without
@@ -59,34 +50,4 @@ int main() {
 
     
 
-}
-
-/* Algorithm to determin top file salespersons using an array*/
-struct Salesperson {
-    std::string name;
-    double salesTotal;
-};
-
-void DisplayTopFiveSalespersons(const std::vector<Salesperson>& allSalespersons) {
-    // topSales has 5 elements, kept sorted highest -> lowest
-    std::vector<Salesperson> topSales(5, {"", -1.0});
-
-    for (const auto& salesPerson : allSalespersons) {
-        // If this person beats the smallest of the current top 5, they're in
-        if (salesPerson.salesTotal > topSales.back().salesTotal) {
-            topSales.back() = salesPerson;
-
-            // Re-sort descending
-            std::sort(topSales.begin(), topSales.end(),
-                [](const Salesperson& a, const Salesperson& b) {
-                    return a.salesTotal > b.salesTotal;
-                });
-        }
-    }
-
-    for (const auto& sp : topSales) {
-        if (sp.salesTotal >= 0) {
-            std::cout << sp.name << ": " << sp.salesTotal << "\n";
-        }
-    }
 }

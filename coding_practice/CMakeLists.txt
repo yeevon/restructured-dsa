@@ -6,3 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(chapter_three ch_3.cpp)
+add_executable(VectorSorting 
+    assignments/VectorSorting/VectorSorting.cpp
+    assignments/VectorSorting/CSVparser.cpp
+    )
