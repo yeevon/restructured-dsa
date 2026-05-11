@@ -104,7 +104,15 @@ Walk `.claude/skills/manifest-conformance/SKILL.md` against the working tree. An
 
 Run end-to-end verification per `/implement` Phase 3 (start the dev server and hit the route, run the CLI, render the page, etc.). For UI-touching work without a browser available, surface explicitly per CLAUDE.md memory rather than declaring success from CLI output alone.
 
-Append a `### Run NNN — verify (orchestrator)` entry to the audit file recording test/lint/type-check/conformance/end-to-end results.
+**Auto-gate: Verification gates (pending human).** Read the task's `## Verification gates (human-only; not programmatic ACs)` section, if present. For each item in it, append a row to the audit file's "Human gates" table marked `pending human`:
+
+```
+<ISO timestamp> | <gate label from task> | pending human | /auto run — visual check post-commit
+```
+
+These rows are intentionally **not** auto-accepted — they require a human to do the check (typically open `tests/playwright/.screenshots/` or the dev server in a browser) and edit the row from `pending human` to `pass` post-commit. `/auto` does not stop on them; the loop continues to commit. If the task has no `Verification gates` section (e.g., a non-UI task), skip this gate.
+
+Append a `### Run NNN — verify (orchestrator)` entry to the audit file recording test/lint/type-check/conformance/end-to-end results AND the list of pending-human gates filed at this phase.
 
 ## Phase 6 — Review + commit
 
@@ -137,6 +145,7 @@ Output to the user:
 - End-to-end verification result.
 - Audit file path.
 - The commit SHA.
+- **Pending human gates** — any `pending human` rows filed at Phase 5 (Verification gates). Name the gate label and tell the human what artifact to inspect (e.g. "review `tests/playwright/.screenshots/` and edit `pending human` → `pass` in the audit Human-gates table"). If none, say "none."
 
 Do **not** push. The human reviews the audit file and decides whether to push.
 

@@ -72,17 +72,27 @@ The project-wide answer to *how* rendered-behavior verification happens is **ADR
 
 ### UI-5 — Verify pass requires human visual confirmation of the rendered surface
 
-The /implement verify phase for a UI task is not satisfied by `curl` + `grep` + structural HTML assertions, and is not satisfied by Playwright tests passing alone. A human must visually confirm that the rendered surface is usable: the layout renders, controls are reachable, navigation works, the styling makes the affordance visible. The default mechanism under ADR-010 is **the human reviews the last-run Playwright screenshots** under the artifact directory ADR-010 names; opening the rendered page directly in a browser remains an available substitute when the human prefers it. The load-bearing requirement is that a human eyeballs the surface — not which channel they eyeball it through. If the orchestrator cannot trigger either path, it must say so explicitly and require the human to perform the visual check before reporting verify-pass.
+The /implement verify phase for a UI task is not satisfied by `curl` + `grep` + structural HTML assertions, and is not satisfied by Playwright tests passing alone. A human must visually confirm that the rendered surface is usable: the layout renders, controls are reachable, navigation works, the styling makes the affordance visible. The default mechanism under ADR-010 is **the human reviews the last-run Playwright screenshots** under the artifact directory ADR-010 names; opening the rendered page directly in a browser remains an available substitute when the human prefers it. The load-bearing requirement is that a human eyeballs the surface — not which channel they eyeball it through.
 
-- **Severity:** **blocker** when the verify-phase report claims success on a UI task without naming either screenshot review or direct browser inspection by the human.
-- **Trace:** ADR-010 (verification gate — Playwright tests pass + human reviews last-run screenshots); operational verification rule for UI work; may be mirrored in `CLAUDE.md` or in reviewer/orchestrator prompts.
+The orchestrator (whether `/implement` or `/auto`) does **not** perform the visual confirmation itself. Instead, at verify-time it files a row in the audit Human-gates table of the form:
 
-### UI-6 — Reviewer of a UI task must confirm rendered-surface verification
+```
+<ISO timestamp> | rendered-surface verification — pass (TASK-NNN <surface>) | pending human | <orchestrator note>
+```
 
-The reviewer's protocol for a UI task includes confirming that the rendered surface has been visually checked, not just that the staged diff is structurally correct. Under ADR-010 this confirmation is satisfied by an audit Human-gates row of the form `rendered-surface verification — pass` (Playwright tests green; screenshots reviewed by the human). Equivalent direct browser inspection by the human, recorded in the same row format, is also acceptable. ADR fidelity for a UI ADR includes "does the implementation produce the affordance the ADR's Decision section describes," not only "does the diff add the right files."
+The row is the orchestrator's record that the gate exists and is unfilled. The human edits the row from `pending human` to `pass` (or `fail` with notes) **post-commit**, after inspecting the screenshots / browser. This makes visual verification a post-commit validation gate, not a pre-commit blocker.
 
-- **Severity:** **blocker** in the reviewer's verdict when the staged diff is a UI task and no audit row marked `rendered-surface verification — pass` is present, or when no equivalent record of human visual confirmation exists.
-- **Trace:** ADR-010 (verification gate and audit-row format); UI-5 by analogy (rendered verification is the load-bearing observation; reviewer is one of the roles obligated to confirm it occurred).
+- **Severity:** **blocker** when the verify-phase report claims success on a UI task without naming either screenshot review or direct browser inspection by the human. **Not a blocker** when the verify-phase report acknowledges it cannot perform the visual check itself, files a `pending human` row in the audit Human-gates table, and tells the user what to inspect.
+- **Trace:** ADR-010 (verification gate — Playwright tests pass + human reviews last-run screenshots); operational verification rule for UI work; mirrored in CLAUDE.md "Conventions" (Task-file convention) and in `.claude/commands/auto.md` Phase 5 (Auto-gate: Verification gates).
+
+### UI-6 — Reviewer of a UI task must confirm rendered-surface verification has been *staged*
+
+The reviewer's protocol for a UI task includes confirming that the rendered-surface verification gate has been **staged** — i.e., a Human-gates row exists for it — not necessarily that the human has already filled it in. Under ADR-010 the gate is satisfied by an audit Human-gates row of the form `rendered-surface verification — pass` (Playwright tests green; screenshots reviewed by the human). A `pending human` row at review time is acceptable: the human fills it in post-commit. A complete absence of any rendered-surface verification row on a UI-task diff is a blocker — that means nobody staged the gate.
+
+ADR fidelity for a UI ADR includes "does the implementation produce the affordance the ADR's Decision section describes," not only "does the diff add the right files." The reviewer is the last agent to see the diff before commit; if no gate row exists at all, the orchestrator (`/auto` Phase 5, or `/implement` Phase 3 verify) failed to file one, and the reviewer surfaces that as a blocker.
+
+- **Severity:** **blocker** in the reviewer's verdict when the staged diff is a UI task and no rendered-surface verification row exists in the audit Human-gates table in any state (neither `pending human` nor `pass`). **Non-blocking informational** when the row exists in `pending human` state — the reviewer reports it as a pending human gate to be filled in post-commit, not as a defect.
+- **Trace:** ADR-010 (verification gate and audit-row format); UI-5 by analogy (rendered verification is the load-bearing observation; reviewer confirms the gate exists in the audit, even if not yet filled).
 
 ## Notes
 

@@ -103,6 +103,12 @@ When invoked:
 - [ ] Given <state>, when <action>, then <result>
 - [ ] ...
 
+## Verification gates (human-only; not programmatic ACs)
+(Required for UI tasks; otherwise "None.") Human-only checks that satisfy a UI-5 / UI-6 (`.claude/skills/ui-task-scope/SKILL.md`) rendered-surface verification, a manual exploratory pass, or any other gate whose only valid signal is a human eyeballing the artifact. These are **not** acceptance criteria — the test-writer does not write tests against them, and `/auto` does not stop on them. They are recorded as pending rows in the audit Human-gates table at verify time and filled in by the human post-commit. Example:
+- **Rendered-surface verification.** Given the new UI surface, when the human reviews fresh last-run Playwright screenshots per ADR-010 (or opens the page directly), then the affordance is visually present, legible, and consistent with existing surfaces. Recorded as `rendered-surface verification — pass (TASK-NNN <surface>)` in the audit Human-gates table.
+
+A statement of the form *"when the human reviews…"* or *"when the human visually confirms…"* belongs here, not under Acceptance criteria. If you place it under Acceptance criteria, the test-writer will raise `CANNOT TEST AC-N` and `/auto` will stop on rule 7 — that is a process failure caused by miscategorization, not by the gate itself.
+
 ## Architectural decisions expected
 - <decision the architect anticipates needing during /design>
 - <whether this should become an ADR now (forced by this task) or a project_issue (not yet forced)>

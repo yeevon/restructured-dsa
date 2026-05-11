@@ -69,6 +69,7 @@ These are workspace conventions, not architecture. Architectural patterns live i
 
 - Public functions get type hints; private helpers can skip them when types add no information.
 - Commit format: `<type>(<scope>): <description>`. Scopes derive from the active task; do not invent scopes that aren't reflected in the codebase.
+- **Task-file convention: programmatic ACs vs human-only Verification gates.** Acceptance criteria under `## Acceptance criteria` are programmatic — the test-writer translates each into one or more failing tests, and `/auto` rule 7 (`CANNOT TEST AC-N:`) stops the loop on any AC it cannot translate. Items whose only valid signal is a human eyeballing the artifact — rendered-surface visual review per `.claude/skills/ui-task-scope/SKILL.md` UI-5/UI-6, manual exploratory passes — go under a separate `## Verification gates (human-only; not programmatic ACs)` section. Test-writer does not write tests for them, `/auto` does not stop on them, and `/auto` Phase 5 files a `pending human` row in the audit Human-gates table for each so the human knows to fill it in post-commit. Misplacing a `"when the human reviews…"` item under Acceptance criteria is a process failure — the test-writer raises `PUSHBACK: AC-N is a human-only verification gate, not a programmatic AC.` and the task file must be corrected.
 
 ## LLM audit log
 

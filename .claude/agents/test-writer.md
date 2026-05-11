@@ -31,7 +31,18 @@ When invoked with a task:
    Document to revise: ADR-NNN (architect owns it; supersedure ADR needed)
    ```
    and stop.
-3. Read the task (ACs + ADRs). If the task or an ADR conflicts with the manifest, output:
+3. Read the task (ACs + ADRs). The task file may also include a `## Verification gates (human-only; not programmatic ACs)` section — read it for context, but **do not write tests for any item in it and do not raise `CANNOT TEST` against it**. Items in that section are human-only validation gates (typically rendered-surface visual review per UI-5 / UI-6). They are filled in by the human post-commit; the test-writer's responsibility is the programmatic Acceptance criteria only. If the task lacks the Verification gates section AND has an AC of the form *"when the human reviews…"* / *"when the human visually confirms…"*, that AC is miscategorized — raise:
+
+   ```
+   PUSHBACK: AC-N is a human-only verification gate, not a programmatic AC.
+   AC text: <quoted>
+   Why it's miscategorized: the AC's outcome is satisfied only by a human inspecting the artifact (screenshots, browser, etc.); no programmatic assertion can substitute.
+   Document to revise: design_docs/tasks/TASK-NNN-<slug>.md — move this item to a `## Verification gates (human-only; not programmatic ACs)` section. The architect's Mode 1 task template specifies the section format.
+   ```
+
+   and stop. This pushback target is the task file (architect-owned), not the manifest — it is routine routing of a misclassified item, not a stop signal against architectural authority.
+
+   If the task or an ADR conflicts with the manifest, output:
    ```
    PUSHBACK: Task/ADR conflicts with manifest.
    Manifest entry: <citation>
@@ -98,7 +109,7 @@ When invoked with a task:
    - Performance: <covered tests, or "skipped: <reason>">
    **Pytest red result:** Collected: <N>, Failing: <M>, Passing: <K>
    **Assumptions:** <list ASSUMPTION lines, or "none">
-   **CANNOT TEST:** <list AC numbers, or "none">
+   **CANNOT TEST:** <list AC numbers from `## Acceptance criteria` only, or "none". Items from `## Verification gates (human-only)` never appear here — they are out-of-scope by design.>
    **Architecture leaks found:** <list, or "none">
    **Pushback raised:** <list, or "none">
    ```
@@ -107,7 +118,7 @@ When invoked with a task:
 
 ## Test design priorities (in order)
 
-1. **One test per AC.** Given/When/Then maps directly. If you can't write a meaningful test for an AC, output `> CANNOT TEST AC-N: <reason>` and stop on that AC — do not write a vacuous test to satisfy the count.
+1. **One test per AC.** Given/When/Then maps directly. If you can't write a meaningful test for an AC, output `> CANNOT TEST AC-N: <reason>` and stop on that AC — do not write a vacuous test to satisfy the count. **Scope:** `CANNOT TEST` applies only to items under `## Acceptance criteria`. Items under `## Verification gates (human-only; not programmatic ACs)` are out-of-scope by design and must not be reported as `CANNOT TEST` — they are not the test-writer's responsibility. If a programmatic-looking AC reads as "when the human reviews…," see step 3 (raise `PUSHBACK: AC-N is a human-only verification gate, not a programmatic AC.`).
 2. **Coverage-checklist tests (boundary, edge, negative, performance).** Per step 4a. These are not optional add-ons; happy-path-only suites are sent back. Skips are allowed only with an explicit reason in the coverage matrix.
 3. **Negative-outcome assertions.** What MUST NOT happen. ("No raw LaTeX token appears anywhere in rendered output of any of the N callouts" beats "the rendered HTML contains the word 'callout'.") Often combines with category 2.
 4. **Batch-set assertions over the whole affected set.** If the AC is "all N items render correctly," the test iterates over all N, not item 0. Determinism/stability across two runs belongs here.
