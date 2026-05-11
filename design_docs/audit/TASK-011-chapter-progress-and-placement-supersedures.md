@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-011-chapter-progress-and-placement-supersedures.md`
 **Started:** 2026-05-10T23:55:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed
+**Current phase:** committed (commit `3de9ab0`)
 
 ---
 
@@ -17,6 +17,7 @@
 | 2026-05-11T00:12:00Z | ADR-028 reviewed | auto-accepted | /auto run (also flips ADR-023 → Superseded by ADR-028 §Template-surface only) |
 | 2026-05-11T00:25:00Z | Tests reviewed | auto-accepted | /auto run — 57 failing in test_task011 + 12 amended-RED in test_task009 |
 | 2026-05-11T02:30:00Z | rendered-surface verification — pass (TASK-011 rail progress + placement supersedures) | pending human | /auto run — visual check post-commit (review `tests/playwright/.screenshots/` or dev-server browser walk) |
+| 2026-05-11T02:55:00Z | Commit review | auto-accepted | /auto run — commit `3de9ab0` |
 
 ---
 
