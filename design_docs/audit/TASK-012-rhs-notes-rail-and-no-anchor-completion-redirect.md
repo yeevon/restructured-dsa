@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-012-rhs-notes-rail-and-no-anchor-completion-redirect.md`
 **Started:** 2026-05-11T00:00:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed
+**Current phase:** committed
 
 ---
 
@@ -17,6 +17,7 @@
 | 2026-05-11T02:30:00Z | Tests reviewed | auto-accepted | /auto run — 50 new pytest + 9 Playwright + 1 amended test_task010; 39 red, baseline 763 green. test-writer noted AC-8/AC-12 are documentation-state ACs (verified by orchestrator per ADR-016 in Phase 2, not by automated tests); no PUSHBACK, no `> CANNOT TEST AC-N:` directive raised. |
 | 2026-05-11T04:30:00Z | ADR-031 reviewed | auto-accepted | /auto run (loop resumed after human resolved the Run-006 stop) — routine supersedure of ADR-030 §Decision; the human chose this `#section-{n}-end`-anchor + `scroll-margin-top` mechanism at the surfaced stop, so no `> NEEDS HUMAN`. |
 | 2026-05-11T07:00:00Z | rendered-surface verification — TASK-012 RHS Notes rail + un-crowded LHS rail + no-snap completion redirect | pending human | /auto run — visual check post-commit: open the dev server (`uvicorn app.main:app`) on a wide desktop viewport at a Mandatory and an Optional Chapter, or review last-run Playwright screenshots under `tests/playwright/.screenshots/`, and confirm (a) three-column layout reads clearly with the RHS Notes rail occupying previously-empty real estate, (b) the LHS chapter rail is visibly less crowded than the ADR-028 state, (c) the RHS Notes textarea is usable at the rail width (no overflow, no clipped Save button) and the panel is sticky after a large scroll, (d) clicking "mark complete" at the bottom of a tall Section does not produce a jarring scroll jump; then edit this row's Result from `pending human` to `pass`. |
+| 2026-05-11T07:30:00Z | Commit review | auto-accepted | /auto run — reviewer (Run 013) returned READY TO COMMIT: 0 blockers, 0 conformance blockers; 5 non-blocking nits (stale `75vh` in test docstrings vs implemented `scroll-margin-top: 50vh`; the two project_issue resolution notes call ADR-029/ADR-031 "Proposed"/"Awaiting human acceptance" though all three are Accepted; minor `section_number` over-spec in architecture.md's project-structure summary; duplicate `aria-labelledby="rail-notes-heading"` on `<aside class="notes-rail">` + inner `<section class="rail-notes">`). Committed as `966b824`. This audit-close row + the header Status→Committed are committed as a follow-up `chore(audit)` commit. |
 
 ---
 
