@@ -31,6 +31,7 @@ MC-10: no DB driver imports; no SQL literals; DB access via app.persistence.* on
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pathlib
 import subprocess
@@ -263,9 +264,18 @@ def process_pending() -> None:
 
 
 def main() -> None:
-    """Alias for process_pending — callable entry point."""
+    """CLI entry point: quiet the parser's per-node WARNINGs (they are ADR-003's
+    intended-but-noisy 'unknown LaTeX node stripped' diagnostics — useful on the
+    Lecture page, pure noise in this processor CLI; the parsed text the workflow
+    receives is unaffected), then run the processor.
+
+    Scoped to the CLI path only — `process_pending()` itself does not touch global
+    logging state, so a pytest run that calls `process_pending()` directly leaves
+    `app.parser`'s log level alone (the parser-fidelity tests still see warnings).
+    """
+    logging.getLogger("app.parser").setLevel(logging.ERROR)
     process_pending()
 
 
 if __name__ == "__main__":
-    process_pending()
+    main()
