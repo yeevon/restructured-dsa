@@ -37,6 +37,7 @@ data/
 *.swo
 .vscode/
 .idea/
+.env
 
 # Claude Code local-only settings
 .claude/settings.local.json
