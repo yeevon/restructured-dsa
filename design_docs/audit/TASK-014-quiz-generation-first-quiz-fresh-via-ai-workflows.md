@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-014-quiz-generation-first-quiz-fresh-via-ai-workflows.md`
 **Started:** 2026-05-11T00:00:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed (f43fa9c)
+**Current phase:** committed
 
 ---
 
@@ -18,6 +18,7 @@
 | 2026-05-12T02:30:00Z | Tests reviewed | auto-accepted | /auto run — `tests/test_task014_quiz_generation.py` (34 tests) + `tests/playwright/test_task014_quiz_generation_dom.py` (11 tests); non-Playwright run: 21 task-014 tests failing pre-implementation (for the right reasons — `ModuleNotFoundError: No module named 'app.workflows'`, missing `quizzes.generation_error` column, 409 guard not implemented), 754 passing (full pre-existing suite green + the 13 legit-passing task-014 tests). Test-writer raised no PUSHBACK / CANNOT-TEST / leak; all 14 programmatic ACs covered. |
 | 2026-05-12T03:30:00Z | rendered-surface verification — pass (TASK-014 Quiz-generation surface states) | pending human | /auto run — visual check post-commit. Human reviews the per-Section Quiz surface on ≥1 Mandatory + ≥1 Optional Chapter with Quizzes driven (via the test seam) into `generating` / `ready` / `generation_failed` (last-run Playwright screenshots under `tests/playwright/artifacts/` or the dev server directly): the four states clearly distinguished; `ready` not misleading (no fake take-affordance — just "Ready"); `generation_failed` reads as a failure; the existing Lecture surfaces (3-column layout, RHS Notes rail, bottom-of-Section completion affordance, the Quiz block's empty-state for Sections with no Quizzes) unchanged — no layout regression. Edit `pending human` → `pass` (or file a finding) post-commit. (Programmatic structure covered: 982 pytest tests green incl. 12 task-014 Playwright DOM tests asserting the labels + the no-take-affordance; the *visual* review is human-only per ADR-010 / the task's Verification-gates section.) |
 | 2026-05-12T03:30:00Z | ai-workflows generation sanity — pass (TASK-014 first-Quiz fresh generation) | pending human | /auto run — real-engine check post-commit. Human runs the out-of-band processor (`python -m app.workflows.process_quiz_requests`) against a `requested` Quiz for a real Section with the *actual* `ai-workflows` engine (needs `GEMINI_API_KEY` exported for the default `gemini/gemini-2.5-flash` tier, or whichever tier `app/workflows/question_gen.py` declares) — NOT the test stub: a set of hands-on coding-task Questions recognizably *about the Section's content* is produced; the Quiz reaches `ready`; the per-Section surface shows "Ready". (Cannot be a programmatic AC — depends on a real AI call (tests must not make one) + human judgment of "is this a sensible coding-task Question about this Section". If "not coding tasks / not about the Section / low quality" → `fail`, the workflow's prompt needs work — a follow-up, not a re-design.) Edit `pending human` → `pass` (or file a finding) post-commit. |
+| 2026-05-12T04:30:00Z | Commit review | auto-accepted | /auto run — reviewer Run 012 = `READY TO COMMIT` (0 blockers; conformance walk 0 blockers; the Run-009 blocking finding was remediated — implementer Run 011 + test-writer Run 010's new `test_subprocess_invocation_shape_section_content_and_title`; 983/983 tests green). Commit `f43fa9c` — `feat(quiz): TASK-014 — Quiz generation (first Quiz, fresh-only) via ai-workflows, async`. Not pushed (the human reviews + decides). One carried non-blocking note: confirm PyPI's published `jmdl-ai-workflows` 0.4.0 carries the M19+ declarative-authoring surface (`WorkflowSpec` / `register_workflow` / the built-in `Step` types) — the dev env is editable-installed from the clone — and bump the `>=0.4` pin if not. |
 
 ---
 
