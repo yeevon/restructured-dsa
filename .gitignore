@@ -19,6 +19,11 @@ htmlcov/
 venv/
 env/
 
+# Local secrets / env files (e.g. GEMINI_API_KEY for the question_gen tier — ADR-036)
+.env
+.env.*
+!.env.example
+
 # SQLite runtime state — ADR-022 (data/notes.db default + NOTES_DB_PATH override)
 data/
 *.db

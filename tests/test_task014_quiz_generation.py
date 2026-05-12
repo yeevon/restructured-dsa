@@ -2038,3 +2038,406 @@ def test_subprocess_invocation_shape_section_content_and_title(tmp_path, monkeyp
         "ADR-036: AIW_EXTRA_WORKFLOW_MODULES must be set so `aiw run` imports the "
         "CS-300-owned question_gen WorkflowSpec before dispatching."
     )
+
+
+# ===========================================================================
+# Delta — Run 013 (post-commit fix): aiw subprocess PYTHONPATH / cwd reachability
+#
+# Human gate `ai-workflows generation sanity` failed:
+#   ModuleNotFoundError: No module named 'app'
+# Root cause (delta brief):
+#   1. subprocess env has no PYTHONPATH → aiw can't `import app.workflows.question_gen`.
+#   2. cwd = <repo>/content (Path(CONTENT_ROOT).parent), NOT the repo root.
+# Fix required (implementer): prepend CS-300 repo root to PYTHONPATH in env; set
+# cwd to the repo root (the directory that contains the `app` package).
+# ===========================================================================
+
+
+def test_subprocess_pythonpath_and_cwd_for_app_importability(
+    tmp_path, monkeypatch
+) -> None:
+    """
+    Post-commit fix (Run 013): the `aiw run` subprocess env must contain a PYTHONPATH
+    entry whose os.pathsep-split list includes the CS-300 repo root (the directory that
+    contains the `app` package), AND the cwd= kwarg must be that same repo root — not
+    <repo>/content or <repo>/content/latex.
+
+    Without these two conditions the `aiw` console script (whose sys.path[0] is
+    ~/.local/bin, not the cwd) cannot `import app.workflows.question_gen`, causing:
+        ModuleNotFoundError: No module named 'app'
+
+    Contracts asserted:
+      1. env['PYTHONPATH'] exists in the kwargs passed to subprocess.run.
+      2. The CS-300 repo root (os.path.dirname(os.path.dirname(os.path.abspath(
+         app.__file__)))) is one of the os.pathsep-split entries in PYTHONPATH
+         (other inherited entries are allowed; we assert containment, not equality).
+      3. cwd== repo root (the dir containing the `app` package) — NOT <repo>/content.
+
+    This test fails against the current implementation (no PYTHONPATH in env;
+    cwd = <repo>/content) and must pass once the implementer adds PYTHONPATH + fixes cwd.
+
+    Trace: delta brief (Run 013); ADR-036 §How application code invokes the workflow.
+    """
+    import os  # noqa: PLC0415
+
+    db_path = str(tmp_path / "pythonpath_cwd.db")
+    monkeypatch.setenv("NOTES_DB_PATH", db_path)
+
+    # Bootstrap DB and create a 'requested' Quiz row
+    from fastapi.testclient import TestClient  # noqa: PLC0415
+    from app.main import app as _app  # noqa: PLC0415
+    client = TestClient(_app)
+    client.get(f"/lecture/{MANDATORY_CHAPTER_ID}")
+    client.post(
+        f"/lecture/{MANDATORY_CHAPTER_ID}/sections/{MANDATORY_FIRST_SECTION}/quiz",
+        follow_redirects=False,
+    )
+
+    # Verify prerequisite
+    quiz_rows = _db_rows(db_path, "SELECT quiz_id, status FROM quizzes")
+    assert len(quiz_rows) == 1 and quiz_rows[0]["status"] == "requested", (
+        "Prerequisite: expected exactly one 'requested' Quiz before running the processor."
+    )
+
+    # Derive the expected repo root: the directory that CONTAINS the `app` package
+    import app as _app_pkg  # noqa: PLC0415
+    expected_repo_root = os.path.dirname(
+        os.path.dirname(os.path.abspath(_app_pkg.__file__))
+    )
+
+    # Run the processor with subprocess.run mocked (capture call_args)
+    success_stdout = _make_success_stdout([
+        {"prompt": "Implement merge sort.", "topics": ["sorting"]},
+    ])
+    mock_completed = _make_completed_process(stdout=success_stdout, returncode=0)
+    captured_mock = MagicMock(return_value=mock_completed)
+
+    with patch("subprocess.run", captured_mock):
+        import app.workflows.process_quiz_requests as _proc  # noqa: PLC0415
+        if hasattr(_proc, "process_pending"):
+            _proc.process_pending()
+        elif hasattr(_proc, "main"):
+            _proc.main()
+        else:
+            pytest.fail(
+                "app.workflows.process_quiz_requests has no callable entry point. "
+                "ADR-037: the processor must expose process_pending() or main()."
+            )
+
+    assert captured_mock.called, (
+        "subprocess.run was never called during the processor run. "
+        "ADR-036: the processor must invoke `aiw run question_gen` via subprocess.run."
+    )
+
+    call = captured_mock.call_args
+
+    # --- Assert 1: env= kwarg has PYTHONPATH ---
+    env_kwarg = call.kwargs.get("env")
+    assert env_kwarg is not None, (
+        "subprocess.run was called without an `env=` kwarg. "
+        "The processor must pass env= to the subprocess (this was already asserted by "
+        "test_subprocess_invocation_shape_section_content_and_title; if it fails here "
+        "the env= kwarg was removed)."
+    )
+
+    pythonpath_val = env_kwarg.get("PYTHONPATH")
+    assert pythonpath_val is not None, (
+        "The subprocess env dict does not contain a 'PYTHONPATH' key. "
+        "Bug: the aiw console script's sys.path[0] is the script dir (~/.local/bin), "
+        "NOT the cwd, so setting cwd alone is insufficient — the CS-300 repo root must "
+        "be explicitly prepended to PYTHONPATH so that `aiw run` can "
+        "`import app.workflows.question_gen`. "
+        f"Current env keys: {sorted(env_kwarg.keys())!r}. "
+        "Fix: add PYTHONPATH=<repo_root>[:<inherited_PYTHONPATH>] to the subprocess env."
+    )
+
+    # --- Assert 2: repo root is one of the PYTHONPATH entries ---
+    pythonpath_entries = pythonpath_val.split(os.pathsep)
+    assert expected_repo_root in pythonpath_entries, (
+        f"The CS-300 repo root {expected_repo_root!r} is not present in the subprocess "
+        f"PYTHONPATH entries.\n"
+        f"  PYTHONPATH value: {pythonpath_val!r}\n"
+        f"  Entries (split on os.pathsep={os.pathsep!r}): {pythonpath_entries!r}\n"
+        "The aiw subprocess must be able to `import app.workflows.question_gen`; that "
+        "requires the repo root (the directory containing the `app` package) to appear "
+        "in PYTHONPATH. Other inherited entries are fine; we assert containment only."
+    )
+
+    # --- Assert 3: cwd= is the repo root, NOT <repo>/content ---
+    cwd_kwarg = call.kwargs.get("cwd")
+    assert cwd_kwarg is not None, (
+        "subprocess.run was called without a `cwd=` kwarg. "
+        "The processor must set cwd= to the CS-300 repo root so that relative imports "
+        "resolve correctly. "
+        f"Expected cwd: {expected_repo_root!r}."
+    )
+
+    # Normalise to str for comparison (the implementer may pass a Path or str)
+    cwd_str = str(cwd_kwarg)
+    assert cwd_str == expected_repo_root, (
+        f"subprocess.run cwd={cwd_str!r} is not the CS-300 repo root.\n"
+        f"  Expected: {expected_repo_root!r}\n"
+        "Bug: the current implementation sets cwd=Path(CONTENT_ROOT).parent which "
+        "resolves to <repo>/content — one level too deep. The aiw subprocess needs to "
+        "be launched from the repo root (the directory that contains the `app` package) "
+        "so that module discovery works correctly alongside PYTHONPATH."
+    )
+
+
+# ===========================================================================
+# Delta — Run 015: Change 1 — extra='forbid' on pydantic models
+#
+# These tests assert that QuestionGenInput, GeneratedQuestion, and
+# QuestionGenOutput raise pydantic.ValidationError when constructed with an
+# unexpected extra field.  Currently the models have no model_config =
+# ConfigDict(extra='forbid') so the extra field is silently ignored — these
+# tests FAIL against the current code and will pass once each model gains the
+# ConfigDict.
+#
+# Trace: delta brief Change 1 (post-commit hygiene from a referenced
+# ai-workflows consumer); ADR-036 §Workflow module.
+# ===========================================================================
+
+
+def test_question_gen_input_forbids_extra_fields() -> None:
+    """
+    Change 1 (delta Run 015): QuestionGenInput must raise pydantic.ValidationError
+    when constructed with an unexpected extra field.
+
+    The 'extra="forbid"' setting on model_config catches schema drift immediately
+    at construction time instead of silently dropping the unknown field — a
+    no-conflict practice adopted from the referenced ai-workflows consumer.
+
+    Field names (section_content / section_title) are pinned by the existing tests
+    and by ADR-036 §Workflow module — this test only asserts the extra='forbid'
+    behaviour, not any change to the declared fields.
+
+    Boundary: the extra field is an integer (a type the pydantic model would not
+    otherwise accept) — exercises the validator on a clearly foreign field.
+
+    Must FAIL against current code (no ConfigDict(extra='forbid')).
+    """
+    import pydantic  # noqa: PLC0415
+    from app.workflows.question_gen import QuestionGenInput  # noqa: PLC0415
+
+    with pytest.raises(pydantic.ValidationError) as exc_info:
+        QuestionGenInput(
+            section_content="some latex content",
+            section_title="1.1 Arrays",
+            bogus_field=1,  # type: ignore[call-arg]  # intentional extra
+        )
+
+    errors = exc_info.value.errors()
+    # At least one error must be about the extra field
+    extra_errors = [e for e in errors if e.get("type") == "extra_forbidden"]
+    assert extra_errors, (
+        f"pydantic.ValidationError was raised but contained no 'extra_forbidden' "
+        f"error for the 'bogus_field' extra field.\n"
+        f"Errors: {errors!r}\n"
+        "Fix: add model_config = ConfigDict(extra='forbid') to QuestionGenInput."
+    )
+
+
+def test_generated_question_forbids_extra_fields() -> None:
+    """
+    Change 1 (delta Run 015): GeneratedQuestion must raise pydantic.ValidationError
+    when constructed with an unexpected extra field.
+
+    Field names (prompt / topics) are pinned by the existing
+    test_question_gen_output_schema_has_prompt_and_topics_no_choices and by
+    ADR-036 §Workflow module — this test only asserts the extra='forbid'
+    behaviour.
+
+    Negative: the bogus field is a string so it would not fail for a type-mismatch
+    reason — only the extra='forbid' policy can reject it.
+
+    Must FAIL against current code (no ConfigDict(extra='forbid')).
+    """
+    import pydantic  # noqa: PLC0415
+    from app.workflows.question_gen import GeneratedQuestion  # noqa: PLC0415
+
+    with pytest.raises(pydantic.ValidationError) as exc_info:
+        GeneratedQuestion(
+            prompt="Implement a stack using a linked list.",
+            topics=["stack", "linked-list"],
+            bogus="unexpected",  # type: ignore[call-arg]  # intentional extra
+        )
+
+    errors = exc_info.value.errors()
+    extra_errors = [e for e in errors if e.get("type") == "extra_forbidden"]
+    assert extra_errors, (
+        f"pydantic.ValidationError was raised but contained no 'extra_forbidden' "
+        f"error for the 'bogus' extra field.\n"
+        f"Errors: {errors!r}\n"
+        "Fix: add model_config = ConfigDict(extra='forbid') to GeneratedQuestion."
+    )
+
+
+def test_question_gen_output_forbids_extra_fields() -> None:
+    """
+    Change 1 (delta Run 015): QuestionGenOutput must raise pydantic.ValidationError
+    when constructed with an unexpected extra field.
+
+    Edge: the extra field is passed to the top-level output model (not a nested
+    GeneratedQuestion) — exercises that the forbid policy applies at every layer.
+
+    Must FAIL against current code (no ConfigDict(extra='forbid')).
+    """
+    import pydantic  # noqa: PLC0415
+    from app.workflows.question_gen import QuestionGenOutput  # noqa: PLC0415
+
+    with pytest.raises(pydantic.ValidationError) as exc_info:
+        QuestionGenOutput(
+            questions=[],
+            bogus=1,  # type: ignore[call-arg]  # intentional extra
+        )
+
+    errors = exc_info.value.errors()
+    extra_errors = [e for e in errors if e.get("type") == "extra_forbidden"]
+    assert extra_errors, (
+        f"pydantic.ValidationError was raised but contained no 'extra_forbidden' "
+        f"error for the 'bogus' extra field.\n"
+        f"Errors: {errors!r}\n"
+        "Fix: add model_config = ConfigDict(extra='forbid') to QuestionGenOutput."
+    )
+
+
+
+# ===========================================================================
+# Delta — Run 015: Change 2 — env-overridable question-gen model
+#
+# These tests assert that question_gen_tier_registry() returns a TierConfig
+# whose route.model honours the precedence:
+#   QUESTION_GEN_MODEL > OLLAMA_MODEL_QUESTION_GEN > default ("gemini/gemini-2.5-flash")
+#
+# The tier key must be "question-gen-llm" (the renamed key per the delta brief;
+# the current code uses "default" — so the _TIER_KEY assertion is the failing
+# signal).
+#
+# Test seam: question_gen_tier_registry() is called directly after monkeypatching
+# os.environ (monkeypatch.setenv / delenv).  The implementer's _resolve_model()
+# reads os.environ at call time, so no module reload is needed — and we must
+# NOT reload (register_workflow fires at import time and the framework refuses
+# to re-register an already-registered workflow name, raising ValueError).
+#
+# Must FAIL against current code ("default" key, no env-var handling):
+#   - test_question_gen_tier_default_model: KeyError on "question-gen-llm"
+#   - test_question_gen_tier_question_gen_model_env_var: KeyError on "question-gen-llm"
+#   - test_question_gen_tier_ollama_model_env_var: KeyError on "question-gen-llm"
+# ===========================================================================
+
+_EXPECTED_DEFAULT_MODEL = "gemini/gemini-2.5-flash"
+_TIER_KEY = "question-gen-llm"
+
+
+def test_question_gen_tier_default_model(monkeypatch) -> None:
+    """
+    Change 2 (delta Run 015) — precedence (c / base-case): with neither
+    QUESTION_GEN_MODEL nor OLLAMA_MODEL_QUESTION_GEN set, the tier registry
+    must use the default model "gemini/gemini-2.5-flash" under the tier key
+    "question-gen-llm".
+
+    Boundary: this is the floor of the precedence chain.
+
+    Current failure: question_gen_tier_registry() returns {"default": ...} —
+    the key "question-gen-llm" is absent, so the assertion fails with a
+    descriptive message (not a bare KeyError).
+
+    Must FAIL against current code (key is "default", not "question-gen-llm").
+    """
+    monkeypatch.delenv("QUESTION_GEN_MODEL", raising=False)
+    monkeypatch.delenv("OLLAMA_MODEL_QUESTION_GEN", raising=False)
+
+    from app.workflows.question_gen import question_gen_tier_registry  # noqa: PLC0415
+
+    registry = question_gen_tier_registry()
+
+    assert _TIER_KEY in registry, (
+        f"question_gen_tier_registry() returned keys {list(registry.keys())!r}; "
+        f"expected the tier key to be {_TIER_KEY!r}.\n"
+        "Fix: rename the 'default' tier key to 'question-gen-llm' in "
+        "question_gen_tier_registry()."
+    )
+    actual_model = registry[_TIER_KEY].route.model
+    assert actual_model == _EXPECTED_DEFAULT_MODEL, (
+        f"With neither env var set, the resolved model is {actual_model!r}; "
+        f"expected {_EXPECTED_DEFAULT_MODEL!r}.\n"
+        "Fix: ensure _resolve_model() returns the default when neither "
+        "QUESTION_GEN_MODEL nor OLLAMA_MODEL_QUESTION_GEN is set."
+    )
+
+
+def test_question_gen_tier_question_gen_model_env_var(monkeypatch) -> None:
+    """
+    Change 2 (delta Run 015) — precedence (a / highest): with
+    QUESTION_GEN_MODEL="gemini/gemini-2.0-flash", the tier registry must use
+    that model verbatim.
+
+    QUESTION_GEN_MODEL is the full litellm model string and takes highest
+    precedence — it is used verbatim (no prefix transformation).
+
+    Current failure: question_gen_tier_registry() returns {"default": ...} so
+    the "question-gen-llm" key is absent (the env var is not checked at all yet).
+
+    Must FAIL against current code (key is "default" + no env-var handling).
+    """
+    monkeypatch.setenv("QUESTION_GEN_MODEL", "gemini/gemini-2.0-flash")
+    monkeypatch.delenv("OLLAMA_MODEL_QUESTION_GEN", raising=False)
+
+    from app.workflows.question_gen import question_gen_tier_registry  # noqa: PLC0415
+
+    registry = question_gen_tier_registry()
+
+    assert _TIER_KEY in registry, (
+        f"question_gen_tier_registry() returned keys {list(registry.keys())!r}; "
+        f"expected the tier key to be {_TIER_KEY!r}.\n"
+        "Fix: rename the 'default' tier key to 'question-gen-llm' and implement "
+        "_resolve_model() env-var reading."
+    )
+    actual_model = registry[_TIER_KEY].route.model
+    assert actual_model == "gemini/gemini-2.0-flash", (
+        f"With QUESTION_GEN_MODEL='gemini/gemini-2.0-flash', the resolved model is "
+        f"{actual_model!r}; expected 'gemini/gemini-2.0-flash'.\n"
+        "Fix: _resolve_model() must return os.environ['QUESTION_GEN_MODEL'] "
+        "verbatim when that env var is set."
+    )
+
+
+def test_question_gen_tier_ollama_model_env_var(monkeypatch) -> None:
+    """
+    Change 2 (delta Run 015) — precedence (b / secondary): with only
+    OLLAMA_MODEL_QUESTION_GEN="qwen2.5:14b" set (QUESTION_GEN_MODEL absent),
+    the tier registry must use "ollama/qwen2.5:14b".
+
+    The implementer prefixes "ollama/" if the value does not already start with
+    it — this tests the prefix-normalisation edge (the env-var value "qwen2.5:14b"
+    lacks the "ollama/" prefix; the resolved model must have it).
+
+    Current failure: question_gen_tier_registry() returns {"default": ...} so
+    the "question-gen-llm" key is absent (the env var is not checked at all yet).
+
+    Edge: the OLLAMA_MODEL_QUESTION_GEN value deliberately lacks the "ollama/"
+    prefix to exercise the prefix-prepend branch.
+
+    Must FAIL against current code (key is "default" + no env-var handling).
+    """
+    monkeypatch.delenv("QUESTION_GEN_MODEL", raising=False)
+    monkeypatch.setenv("OLLAMA_MODEL_QUESTION_GEN", "qwen2.5:14b")
+
+    from app.workflows.question_gen import question_gen_tier_registry  # noqa: PLC0415
+
+    registry = question_gen_tier_registry()
+
+    assert _TIER_KEY in registry, (
+        f"question_gen_tier_registry() returned keys {list(registry.keys())!r}; "
+        f"expected the tier key to be {_TIER_KEY!r}.\n"
+        "Fix: rename the 'default' tier key to 'question-gen-llm' and implement "
+        "_resolve_model() env-var reading."
+    )
+    actual_model = registry[_TIER_KEY].route.model
+    assert actual_model == "ollama/qwen2.5:14b", (
+        f"With OLLAMA_MODEL_QUESTION_GEN='qwen2.5:14b', the resolved model is "
+        f"{actual_model!r}; expected 'ollama/qwen2.5:14b'.\n"
+        "Fix: _resolve_model() must prepend 'ollama/' to the value of "
+        "OLLAMA_MODEL_QUESTION_GEN if it does not already start with 'ollama/'."
+    )

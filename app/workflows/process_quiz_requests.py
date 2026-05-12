@@ -46,6 +46,16 @@ from app.persistence import (
     mark_quiz_ready,
 )
 
+# The directory that *contains* the `app` package — i.e. the CS-300 repo root.
+# app/workflows/process_quiz_requests.py → parents[0]=app/workflows, [1]=app, [2]=repo root.
+# Used as both cwd= and the prepended PYTHONPATH entry for the aiw subprocess so that
+# `aiw run question_gen` can `import app.workflows.question_gen` regardless of where
+# the `aiw` console script is installed (sys.path[0] for installed scripts is the
+# script dir, e.g. ~/.local/bin, not the cwd).
+# The cwd= at repo root also means aiw's startup .env auto-load will look at
+# <repo>/.env — where GEMINI_API_KEY lives — instead of <repo>/content/.env.
+_REPO_ROOT = str(pathlib.Path(__file__).resolve().parents[2])
+
 
 def _get_section_content(section_id: str) -> tuple[str, str]:
     """
@@ -122,12 +132,18 @@ def _invoke_question_gen(
 
     MC-1: no LLM SDK import; invocation goes through the `aiw` CLI subprocess.
     """
+    # Prepend the repo root to any inherited PYTHONPATH so that the `aiw` console
+    # script (whose sys.path[0] is the script install dir, not the cwd) can
+    # `import app.workflows.question_gen`.
+    inherited_pythonpath = os.environ.get("PYTHONPATH", "")
+    pythonpath = os.pathsep.join(p for p in (_REPO_ROOT, inherited_pythonpath) if p)
+
     env = {
         **os.environ,
         "AIW_EXTRA_WORKFLOW_MODULES": "app.workflows.question_gen",
+        "PYTHONPATH": pythonpath,
     }
 
-    # Use sys.executable-based form to be PATH-independent (ADR-036 note)
     result = subprocess.run(
         [
             "aiw", "run", "question_gen",
@@ -138,7 +154,10 @@ def _invoke_question_gen(
         env=env,
         capture_output=True,
         text=True,
-        cwd=str(pathlib.Path(_cfg.CONTENT_ROOT).parent),
+        # cwd= is the repo root (not <repo>/content) so that:
+        # (a) module discovery is consistent with PYTHONPATH above, and
+        # (b) aiw's startup .env auto-load finds <repo>/.env (where GEMINI_API_KEY lives).
+        cwd=_REPO_ROOT,
     )
 
     if result.returncode != 0:

@@ -27,7 +27,9 @@ MC-10: no DB driver imports; no SQL literals; no DB access.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+import os
+
+from pydantic import BaseModel, ConfigDict
 
 from ai_workflows.primitives.tiers import LiteLLMRoute, TierConfig
 from ai_workflows.workflows import LLMStep, WorkflowSpec, register_workflow
@@ -47,6 +49,8 @@ class QuestionGenInput(BaseModel):
     No learner-controlled num_questions this slice (ADR-034's surface is a single
     submit button with no form fields).
     """
+    model_config = ConfigDict(extra="forbid")
+
     section_content: str
     section_title: str
 
@@ -64,6 +68,8 @@ class GeneratedQuestion(BaseModel):
     Manifest §5: 'No non-coding Question formats.'
     Manifest §7: 'Every Question is a hands-on coding task.'
     """
+    model_config = ConfigDict(extra="forbid")
+
     prompt: str
     topics: list[str]
 
@@ -76,6 +82,8 @@ class QuestionGenOutput(BaseModel):
     FINAL_STATE_KEY convention — `questions: list[GeneratedQuestion]`.
     The CLI prints json.dumps({"questions": [...]}, indent=2) on stdout.
     """
+    model_config = ConfigDict(extra="forbid")
+
     questions: list[GeneratedQuestion]
 
 
@@ -84,19 +92,43 @@ class QuestionGenOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _resolve_model() -> str:
+    """
+    Resolve the LLM model string for question generation at call time.
+
+    Precedence (highest to lowest):
+      1. QUESTION_GEN_MODEL env var — full litellm model string, used verbatim.
+      2. OLLAMA_MODEL_QUESTION_GEN env var — Ollama model name; "ollama/" prefix
+         is prepended if the value does not already start with it.
+      3. Default: "gemini/gemini-2.5-flash".
+
+    Reads os.environ at call time so monkeypatched env vars take effect in tests
+    without a module reload.
+
+    ADR-036 §Workflow module: "the specific provider/model is a tuning decision
+    inside the tier registry, not an architectural commitment."
+    """
+    if qgm := os.environ.get("QUESTION_GEN_MODEL"):
+        return qgm
+    if ollama := os.environ.get("OLLAMA_MODEL_QUESTION_GEN"):
+        return ollama if ollama.startswith("ollama/") else f"ollama/{ollama}"
+    return "gemini/gemini-2.5-flash"
+
+
 def question_gen_tier_registry() -> dict[str, TierConfig]:
     """
     Tier registry for the question_gen workflow.
 
-    ADR-036 §Workflow module: one LLM tier — gemini/gemini-2.5-flash via
-    LiteLLMRoute (the framework's worked-example default; needs GEMINI_API_KEY
+    ADR-036 §Workflow module: one LLM tier — resolved via _resolve_model()
+    (default: gemini/gemini-2.5-flash via LiteLLMRoute; needs GEMINI_API_KEY
     at runtime). The specific provider/model is a tuning decision, not an
     architectural commitment.
     """
+    model = _resolve_model()
     return {
-        "default": TierConfig(
-            name="default",
-            route=LiteLLMRoute(model="gemini/gemini-2.5-flash"),
+        "question-gen-llm": TierConfig(
+            name="question-gen-llm",
+            route=LiteLLMRoute(model=model),
         )
     }
 
@@ -158,7 +190,7 @@ _spec = WorkflowSpec(
     tiers=question_gen_tier_registry(),
     steps=[
         LLMStep(
-            tier="default",
+            tier="question-gen-llm",
             prompt_fn=_question_gen_prompt_fn,
             response_format=QuestionGenOutput,
         ),
