@@ -32,6 +32,17 @@ Public API exported by this package:
   - list_requested_quizzes() -> list[Quiz]
   - get_quiz(quiz_id) -> Quiz | None
   - section_has_nonfailed_quiz(section_id) -> bool
+
+  ADR-038 / ADR-039 Quiz Attempt lifecycle (TASK-015):
+  - QuizAttempt                                 — dataclass for a single quiz_attempts row
+  - AttemptQuestion                             — dataclass for one attempt_questions join row
+  - start_attempt(quiz_id) -> QuizAttempt       — start or resume an in_progress Attempt
+  - get_attempt(attempt_id) -> QuizAttempt | None
+  - get_latest_attempt_for_quiz(quiz_id) -> QuizAttempt | None — latest attempt any status
+  - list_questions_for_quiz(quiz_id) -> list[Question]
+  - list_attempt_questions(attempt_id) -> list[AttemptQuestion]
+  - save_attempt_responses(attempt_id, responses: dict[int, str]) -> None
+  - submit_attempt(attempt_id) -> None          — flip to submitted; does NOT invoke grading
 """
 
 from app.persistence.connection import init_schema
@@ -47,6 +58,8 @@ from app.persistence.section_completions import (
 from app.persistence.quizzes import (
     Quiz,
     Question,
+    QuizAttempt,
+    AttemptQuestion,
     request_quiz,
     list_quizzes_for_section,
     list_quizzes_for_chapter,
@@ -57,6 +70,13 @@ from app.persistence.quizzes import (
     list_requested_quizzes,
     get_quiz,
     section_has_nonfailed_quiz,
+    start_attempt,
+    get_attempt,
+    get_latest_attempt_for_quiz,
+    list_questions_for_quiz,
+    list_attempt_questions,
+    save_attempt_responses,
+    submit_attempt,
 )
 
 __all__ = [
@@ -84,4 +104,14 @@ __all__ = [
     "list_requested_quizzes",
     "get_quiz",
     "section_has_nonfailed_quiz",
+    # ADR-038 / ADR-039 Quiz Attempt lifecycle (TASK-015)
+    "QuizAttempt",
+    "AttemptQuestion",
+    "start_attempt",
+    "get_attempt",
+    "get_latest_attempt_for_quiz",
+    "list_questions_for_quiz",
+    "list_attempt_questions",
+    "save_attempt_responses",
+    "submit_attempt",
 ]

@@ -126,6 +126,11 @@ CREATE TABLE IF NOT EXISTS attempt_questions (
     PRIMARY KEY (attempt_id, question_id)
 );
 CREATE INDEX IF NOT EXISTS idx_attempt_questions_question_id ON attempt_questions (question_id);
+
+-- ADR-039: additive index for the TASK-015 Attempt-lifecycle queries
+-- (list_attempt_questions / save_attempt_responses all filter by attempt_id).
+-- CREATE INDEX IF NOT EXISTS = no migration trigger (ADR-022 §Migration story).
+CREATE INDEX IF NOT EXISTS idx_attempt_questions_attempt_id ON attempt_questions (attempt_id);
 """
 
 

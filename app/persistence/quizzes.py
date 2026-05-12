@@ -404,6 +404,306 @@ def get_quiz(quiz_id: int) -> Quiz | None:
     return _row_to_quiz(row) if row is not None else None
 
 
+# ---------------------------------------------------------------------------
+# Public API — TASK-015 additions (ADR-038 / ADR-039)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class QuizAttempt:
+    """
+    A single quiz_attempts row (a Quiz Attempt, manifest §8).
+
+    ADR-039 §The QuizAttempt dataclass:
+      attempt_id   INTEGER PRIMARY KEY AUTOINCREMENT
+      quiz_id      INTEGER NOT NULL (FK → quizzes)
+      status       TEXT NOT NULL  ('in_progress' | 'submitted' | 'grading' |
+                                   'graded' | 'grading_failed' — ADR-033)
+      created_at   TEXT NOT NULL  (ISO-8601 UTC)
+      submitted_at TEXT nullable  (NULL until submitted)
+      graded_at    TEXT nullable  (NULL until graded — Grade aggregate ships
+                                   with the grading slice)
+
+    No user_id (ADR-033 / MC-7 / manifest §5/§6 single-user).
+    """
+
+    attempt_id: int
+    quiz_id: int
+    status: str
+    created_at: str
+    submitted_at: str | None
+    graded_at: str | None
+
+
+@dataclass
+class AttemptQuestion:
+    """
+    One Question's state within an Attempt — a convenience join of
+    attempt_questions + the Question's prompt + quiz_questions.position.
+
+    ADR-039 §The AttemptQuestion dataclass:
+      question_id  INTEGER  (FK → questions)
+      prompt       TEXT     (the Question's coding-task prompt, from questions)
+      response     TEXT | None  (the learner's code; NULL until submitted)
+      position     INTEGER  (1-based order within the Quiz, from quiz_questions)
+
+    The take template iterates these in position order to render each
+    Question's prompt + a code field.
+    No is_correct / explanation this slice (NULL until grading — ADR-039).
+    No user_id (MC-7).
+    """
+
+    question_id: int
+    prompt: str
+    response: str | None
+    position: int
+
+
+def _row_to_quiz_attempt(row: object) -> QuizAttempt:
+    """Convert a sqlite3.Row to a QuizAttempt dataclass."""
+    return QuizAttempt(
+        attempt_id=row["attempt_id"],
+        quiz_id=row["quiz_id"],
+        status=row["status"],
+        created_at=row["created_at"],
+        submitted_at=row["submitted_at"],
+        graded_at=row["graded_at"],
+    )
+
+
+def _row_to_attempt_question(row: object) -> AttemptQuestion:
+    """Convert a sqlite3.Row to an AttemptQuestion dataclass."""
+    return AttemptQuestion(
+        question_id=row["question_id"],
+        prompt=row["prompt"],
+        response=row["response"],
+        position=row["position"],
+    )
+
+
+def start_attempt(quiz_id: int) -> QuizAttempt:
+    """
+    Start (or resume) a Quiz Attempt for a `ready` Quiz.
+
+    ADR-039 §start_attempt:
+    - If the Quiz already has an `in_progress` Attempt, reuse the latest one
+      (by attempt_id DESC) — no second quiz_attempts row from an idle reload.
+    - Otherwise INSERT a quiz_attempts row (status='in_progress', created_at=<now>,
+      submitted_at/graded_at NULL), then INSERT one attempt_questions row per
+      Question in the Quiz (response/is_correct/explanation all NULL), ordered by
+      quiz_questions.position. All in one transaction.
+    - Trusts the caller: quiz_id is a real `ready` Quiz (the route validated it
+      via get_quiz). Does not re-validate the Quiz's status.
+    - No user_id (MC-7). SQL stays here (MC-10).
+
+    Returns the QuizAttempt (the reused or newly-created one).
+    """
+    conn = get_connection()
+    try:
+        # Check for an existing in_progress Attempt for this Quiz (ADR-039 §reuse)
+        existing = conn.execute(
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "FROM quiz_attempts "
+            "WHERE quiz_id = ? AND status = 'in_progress' "
+            "ORDER BY attempt_id DESC LIMIT 1",
+            (quiz_id,),
+        ).fetchone()
+
+        if existing is not None:
+            return _row_to_quiz_attempt(existing)
+
+        # No in_progress Attempt — create one. All in one transaction.
+        now = _utc_now_iso()
+        cursor = conn.execute(
+            "INSERT INTO quiz_attempts (quiz_id, status, created_at) "
+            "VALUES (?, 'in_progress', ?)",
+            (quiz_id, now),
+        )
+        attempt_id = cursor.lastrowid
+
+        # INSERT one attempt_questions row per Question in the Quiz (ADR-039
+        # §attempt_questions rows at start; response/is_correct/explanation NULL).
+        question_rows = conn.execute(
+            "SELECT question_id FROM quiz_questions "
+            "WHERE quiz_id = ? ORDER BY position",
+            (quiz_id,),
+        ).fetchall()
+
+        for qrow in question_rows:
+            conn.execute(
+                "INSERT INTO attempt_questions (attempt_id, question_id) "
+                "VALUES (?, ?)",
+                (attempt_id, qrow["question_id"]),
+            )
+
+        conn.commit()
+
+        # Re-fetch the freshly-inserted row to return a clean dataclass
+        row = conn.execute(
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "FROM quiz_attempts WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return _row_to_quiz_attempt(row)
+
+
+def get_attempt(attempt_id: int) -> QuizAttempt | None:
+    """
+    Return a single Attempt by attempt_id, or None if not found.
+
+    ADR-039 §get_attempt.
+    SQL stays here (MC-10).
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "FROM quiz_attempts WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return _row_to_quiz_attempt(row) if row is not None else None
+
+
+def get_latest_attempt_for_quiz(quiz_id: int) -> QuizAttempt | None:
+    """
+    Return the most recent Quiz Attempt for a Quiz (any status), or None if none exist.
+
+    ADR-038 §GET .../take: after the PRG redirect, the GET handler uses this to find
+    a `submitted` Attempt (so it can render the "Submitted — grading not yet available"
+    state without calling `start_attempt`, which would create a new `in_progress` row).
+
+    Returns the Attempt with the highest attempt_id for quiz_id, regardless of status.
+    Returns None if no Attempts exist for the Quiz.
+
+    SQL stays here (MC-10). No user_id (MC-7).
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "FROM quiz_attempts WHERE quiz_id = ? "
+            "ORDER BY attempt_id DESC LIMIT 1",
+            (quiz_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return _row_to_quiz_attempt(row) if row is not None else None
+
+
+def list_questions_for_quiz(quiz_id: int) -> list[Question]:
+    """
+    Return the Questions composing a Quiz, ordered by quiz_questions.position.
+
+    ADR-039 §list_questions_for_quiz: a join of quiz_questions ⨝ questions;
+    returns Question dataclasses (topics split to list[str], per ADR-033).
+    SQL stays here (MC-10).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT q.question_id, q.section_id, q.prompt, q.topics, q.created_at "
+            "FROM quiz_questions qq "
+            "JOIN questions q ON qq.question_id = q.question_id "
+            "WHERE qq.quiz_id = ? "
+            "ORDER BY qq.position",
+            (quiz_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [_row_to_question(row) for row in rows]
+
+
+def list_attempt_questions(attempt_id: int) -> list[AttemptQuestion]:
+    """
+    Return the per-Question state of an Attempt — one AttemptQuestion per
+    attempt_questions row, joined with the Question's prompt and
+    quiz_questions.position, ordered by position.
+
+    ADR-039 §list_attempt_questions: this is what the take template iterates.
+    Returns [] for an unknown attempt_id or an Attempt with no rows.
+    SQL stays here (MC-10).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT aq.question_id, q.prompt, aq.response, qq.position "
+            "FROM attempt_questions aq "
+            "JOIN questions q ON aq.question_id = q.question_id "
+            "JOIN quiz_questions qq ON aq.question_id = qq.question_id "
+            "JOIN quiz_attempts qa ON aq.attempt_id = qa.attempt_id "
+            "WHERE aq.attempt_id = ? AND qq.quiz_id = qa.quiz_id "
+            "ORDER BY qq.position",
+            (attempt_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [_row_to_attempt_question(row) for row in rows]
+
+
+def save_attempt_responses(attempt_id: int, responses: dict[int, str]) -> None:
+    """
+    Write the learner's code for each Question in an Attempt.
+
+    ADR-039 §save_attempt_responses:
+    `responses` maps question_id → code-string. For each (question_id, code)
+    in responses: UPDATE attempt_questions SET response = ? WHERE attempt_id = ?
+    AND question_id = ?  — i.e. updates existing rows (created at Attempt start).
+    A question_id not present in the Attempt's rows is ignored (no stray INSERT —
+    defensive, since the route built `responses` from the Attempt's own rows).
+    Stored response is the code verbatim (no transformation).
+    Does NOT change the Attempt's status — submit_attempt does that.
+    All in one transaction.
+    No user_id (MC-7). SQL stays here (MC-10).
+    """
+    if not responses:
+        return
+
+    conn = get_connection()
+    try:
+        for question_id, code in responses.items():
+            conn.execute(
+                "UPDATE attempt_questions SET response = ? "
+                "WHERE attempt_id = ? AND question_id = ?",
+                (code, attempt_id, question_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def submit_attempt(attempt_id: int) -> None:
+    """
+    Submit an Attempt: flip quiz_attempts.status → 'submitted', set submitted_at.
+
+    ADR-039 §submit_attempt:
+    Does NOT touch attempt_questions, does NOT touch is_correct/explanation,
+    does NOT invoke grading (MC-4 — grading is a later out-of-band slice).
+    Idempotent-ish: submitting an already-submitted Attempt is a harmless
+    UPDATE (the route resolves the latest in_progress Attempt before calling).
+    No user_id (MC-7). SQL stays here (MC-10).
+    """
+    now = _utc_now_iso()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE quiz_attempts SET status = 'submitted', submitted_at = ? "
+            "WHERE attempt_id = ?",
+            (now, attempt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def section_has_nonfailed_quiz(section_id: str) -> bool:
     """
     Return True if the Section already has a Quiz with status in

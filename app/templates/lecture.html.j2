@@ -59,6 +59,8 @@
                   Generating&hellip;
                 {% elif quiz.status == 'ready' %}
                   Ready
+                  <a class="section-quiz-take-link"
+                     href="/lecture/{{ chapter_id }}/sections/{{ section.section_number }}/quiz/{{ quiz.quiz_id }}/take">Take this Quiz</a>
                 {% elif quiz.status == 'generation_failed' %}
                   Generation failed
                 {% else %}

@@ -1,0 +1,74 @@
+{% extends "base.html.j2" %}
+
+{% block page_title %}Quiz — Section {{ section_number }} — CS 300{% endblock %}
+
+{% block main %}
+<div class="quiz-take">
+
+  <header class="quiz-take-header">
+    <span class="designation-badge designation-{{ designation | lower }}">{{ designation }}</span>
+    <h1 class="quiz-take-title">Quiz — Section {{ section_number }}{% if section_title %}: {{ section_title | safe }}{% endif %}</h1>
+  </header>
+
+  {% if not_ready %}
+  {# ADR-038 §GET validation: non-ready Quiz — honest "not ready to take" state.
+     No takeable form is presented (manifest §5/§7 / ADR-038). #}
+  <div class="quiz-take-not-ready">
+    <p>This Quiz is not ready to take.</p>
+    <p>Status: <strong>{{ quiz.status | replace('_', ' ') }}</strong></p>
+    <p>The Quiz must be <em>ready</em> before it can be taken. Please check back later.</p>
+  </div>
+
+  {% elif attempt and attempt.status == 'submitted' %}
+  {# ADR-038 §submitted state: 'Submitted — grading not yet available.'
+     Prompts + read-only responses shown; no editable form; no fabricated Grade.
+     MC-5: is_correct/explanation stay NULL; nothing is rendered in their place. #}
+  <div class="quiz-take-submitted">
+    <p class="quiz-take-submitted-status">Submitted — grading not yet available.</p>
+    {% for aq in attempt_questions %}
+    <div class="quiz-take-question">
+      <div class="quiz-take-prompt">
+        <strong>Question {{ loop.index }}:</strong>
+        {{ aq.prompt }}
+      </div>
+      <div class="quiz-take-response-readonly">
+        <label>Your submitted answer:</label>
+        <pre class="quiz-take-response quiz-take-response-readonly">{{ aq.response if aq.response is not none else '(no response submitted)' }}</pre>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  {# ADR-038 §in_progress state: takeable form with a code-entry textarea per Question.
+     Manifest §5/§7: every Question is a hands-on coding task; the learner writes code.
+     NO option radios, no true/false toggles, no non-code inputs. #}
+  <form class="quiz-take-form" method="post"
+        action="/lecture/{{ chapter_id }}/sections/{{ section_number }}/quiz/{{ quiz.quiz_id }}/take">
+    {% for aq in attempt_questions %}
+    <div class="quiz-take-question">
+      <div class="quiz-take-prompt">
+        <strong>Question {{ loop.index }}:</strong>
+        {{ aq.prompt }}
+      </div>
+      {# ADR-038: code-entry textarea — monospace, auto-grow (ADR-029 recipe).
+         name='response_{question_id}' per ADR-038 §POST body.
+         Manifest §5/§7: the learner writes code here — never picks options. #}
+      <textarea class="quiz-take-response"
+                name="response_{{ aq.question_id }}"
+                rows="6"
+                placeholder="Write your code here…">{{ aq.response if aq.response is not none else '' }}</textarea>
+    </div>
+    {% endfor %}
+    <div class="quiz-take-submit">
+      <button type="submit" class="quiz-take-submit-button">Submit Quiz</button>
+    </div>
+  </form>
+  {% endif %}
+
+  <div class="quiz-take-back-link">
+    <a href="{{ back_link }}">&#8592; Back to this Section</a>
+  </div>
+
+</div>
+{% endblock %}

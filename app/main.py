@@ -46,6 +46,13 @@ from app.persistence import (
     request_quiz,
     list_quizzes_for_chapter,
     section_has_nonfailed_quiz,
+    get_quiz,
+    start_attempt,
+    get_attempt,
+    get_latest_attempt_for_quiz,
+    list_attempt_questions,
+    save_attempt_responses,
+    submit_attempt,
 )
 
 # ---- Jinja2 environment ----
@@ -569,3 +576,261 @@ async def request_quiz_route(
         url=f"/lecture/{chapter_id}#section-{section_number}-end",
         status_code=303,
     )
+
+
+@app.get(
+    "/lecture/{chapter_id}/sections/{section_number}/quiz/{quiz_id}/take",
+    response_class=HTMLResponse,
+)
+async def take_quiz_page(
+    chapter_id: str,
+    section_number: str,
+    quiz_id: int,
+) -> HTMLResponse:
+    """
+    GET /lecture/{chapter_id}/sections/{section_number}/quiz/{quiz_id}/take
+
+    ADR-038: The Quiz-taking surface.
+    Validates chapter_id, section_number, quiz_id; the Quiz must be `ready` and
+    must belong to the Section in the URL.  Starts (or resumes) a Quiz Attempt,
+    fetches the ordered AttemptQuestion list, and renders quiz_take.html.j2.
+
+    If the Quiz is not `ready`, renders an honest "not ready to take" state
+    (no takeable form — ADR-038 §GET validation for non-ready case).
+
+    Returns:
+      200 — rendered take surface (in_progress or submitted state)
+      404 — unknown chapter_id / section_number / quiz_id / wrong-section quiz
+      422 — malformed chapter_id (no valid chapter number)
+
+    MC-4: no AI call, no grading, no grading kick-off inside this handler.
+    MC-6: reads content/latex/ read-only.
+    MC-7: no user_id, no auth, no session.
+    MC-10: no sqlite3 here — only in app/persistence/.
+    """
+    # --- Validate chapter_id (mirrors render_chapter) ---
+    try:
+        designation = chapter_designation(chapter_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid chapter_id {chapter_id!r}: {exc}",
+        )
+
+    root = _get_content_root()
+    tex_path = root / f"{chapter_id}.tex"
+    if not tex_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter source file not found: {tex_path.name}",
+        )
+
+    # --- Validate section_number against the parsed Section set (ADR-024) ---
+    latex_text = tex_path.read_text(encoding="utf-8")
+    try:
+        sections = extract_sections(chapter_id, latex_text)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Section ID derivation failed for {chapter_id!r}: {exc}",
+        )
+
+    section_id = f"{chapter_id}#section-{section_number}"
+    known_section_ids = {s["id"] for s in sections}
+    if section_id not in known_section_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section not found: {section_id!r} in chapter {chapter_id!r}",
+        )
+
+    # Find the Section dict for its title
+    section_dict = next((s for s in sections if s["id"] == section_id), None)
+    section_title = (
+        section_dict.get("heading", section_number) if section_dict else section_number
+    )
+
+    # --- Validate quiz_id (ADR-038 §GET validation) ---
+    quiz = get_quiz(quiz_id)
+    if quiz is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quiz {quiz_id!r} not found.",
+        )
+    if quiz.section_id != section_id:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Quiz {quiz_id!r} belongs to section {quiz.section_id!r}, "
+                f"not to {section_id!r}."
+            ),
+        )
+
+    # --- Build nav context (LHS rail + RHS Notes rail per ADR-038 §Template) ---
+    try:
+        nav_groups = _build_nav_groups(root)
+    except (DuplicateChapterNumber, InvalidChapterBasename) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chapter discovery error: {exc}",
+        )
+    _attach_progress_counts(nav_groups)
+
+    notes_list = list_notes_for_chapter(chapter_id)
+    rail_notes_context = _RailNotesContext(chapter_id=chapter_id, notes=notes_list)
+
+    back_link = f"/lecture/{chapter_id}#section-{section_number}-end"
+
+    # --- Non-ready Quiz: render honest "not ready" state (no takeable form) ---
+    if quiz.status != "ready":
+        template = _jinja_env.get_template("quiz_take.html.j2")
+        html = template.render(
+            chapter_id=chapter_id,
+            designation=designation,
+            section_number=section_number,
+            section_title=section_title,
+            quiz=quiz,
+            attempt=None,
+            attempt_questions=[],
+            nav_groups=nav_groups,
+            rail_notes_context=rail_notes_context,
+            back_link=back_link,
+            not_ready=True,
+        )
+        return HTMLResponse(content=html, status_code=200)
+
+    # --- Happy path: start or resume an Attempt (ADR-038 / ADR-039) ---
+    # Check the latest Attempt for this Quiz. If it is already `submitted`, show
+    # the "Submitted — grading not yet available" state without creating a new row
+    # (ADR-038: "If the Attempt is already `submitted` … render the surface in the
+    # submitted state instead of a takeable form").
+    latest = get_latest_attempt_for_quiz(quiz_id)
+    if latest is not None and latest.status == "submitted":
+        attempt = latest
+    else:
+        attempt = start_attempt(quiz_id)
+    aq_list = list_attempt_questions(attempt.attempt_id)
+
+    template = _jinja_env.get_template("quiz_take.html.j2")
+    html = template.render(
+        chapter_id=chapter_id,
+        designation=designation,
+        section_number=section_number,
+        section_title=section_title,
+        quiz=quiz,
+        attempt=attempt,
+        attempt_questions=aq_list,
+        nav_groups=nav_groups,
+        rail_notes_context=rail_notes_context,
+        back_link=back_link,
+        not_ready=False,
+    )
+    return HTMLResponse(content=html, status_code=200)
+
+
+@app.post(
+    "/lecture/{chapter_id}/sections/{section_number}/quiz/{quiz_id}/take",
+)
+async def submit_quiz_attempt(
+    chapter_id: str,
+    section_number: str,
+    quiz_id: int,
+    request: Request,
+) -> RedirectResponse:
+    """
+    POST /lecture/{chapter_id}/sections/{section_number}/quiz/{quiz_id}/take
+
+    ADR-038: The Quiz-submit route.
+    Same path-parameter validation as GET.  Resolves the latest `in_progress`
+    Attempt for the Quiz, calls save_attempt_responses and submit_attempt, then
+    PRG-redirects back to GET .../take (which re-renders in the submitted state).
+
+    The submit route does NOT invoke grading (MC-4 / manifest §6 / ADR-038 /
+    ADR-039 §submit_attempt).  The Attempt sits in `submitted` until the (later)
+    out-of-band grading processor picks it up — mirroring ADR-037's generation
+    processor.
+
+    Returns:
+      303 — PRG redirect to GET .../take
+      404 — unknown chapter_id / section_number / quiz_id / wrong-section quiz
+      422 — malformed chapter_id
+
+    MC-4: submit_attempt() does not invoke grading. No AI call anywhere.
+    MC-7: no user_id, no auth, no session.
+    MC-10: no sqlite3 here — only in app/persistence/.
+    """
+    # --- Same validation as GET (ADR-038 §POST .../take — same path-param validation) ---
+    try:
+        chapter_designation(chapter_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid chapter_id {chapter_id!r}: {exc}",
+        )
+
+    root = _get_content_root()
+    tex_path = root / f"{chapter_id}.tex"
+    if not tex_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter source file not found: {tex_path.name}",
+        )
+
+    latex_text = tex_path.read_text(encoding="utf-8")
+    try:
+        sections = extract_sections(chapter_id, latex_text)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Section ID derivation failed for {chapter_id!r}: {exc}",
+        )
+
+    section_id = f"{chapter_id}#section-{section_number}"
+    known_section_ids = {s["id"] for s in sections}
+    if section_id not in known_section_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section not found: {section_id!r} in chapter {chapter_id!r}",
+        )
+
+    quiz = get_quiz(quiz_id)
+    if quiz is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quiz {quiz_id!r} not found.",
+        )
+    if quiz.section_id != section_id:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Quiz {quiz_id!r} belongs to section {quiz.section_id!r}, "
+                f"not to {section_id!r}."
+            ),
+        )
+
+    # --- Resolve the latest in_progress Attempt for this Quiz ---
+    # start_attempt uses reuse-the-latest-in_progress semantics (ADR-039).
+    # If the Attempt is already submitted, this is a harmless double-submit → redirect.
+    attempt = start_attempt(quiz_id)
+
+    if attempt.status == "in_progress":
+        # Parse form body to build responses dict: {question_id: code}
+        form = await request.form()
+        responses: dict[int, str] = {}
+        for key, value in form.items():
+            if key.startswith("response_"):
+                try:
+                    qid = int(key[len("response_"):])
+                    responses[qid] = str(value)
+                except (ValueError, IndexError):
+                    pass  # ignore malformed keys
+
+        save_attempt_responses(attempt.attempt_id, responses)
+        submit_attempt(attempt.attempt_id)
+
+    # --- PRG redirect back to GET .../take (ADR-038 §Submit-route behavior) ---
+    take_url = (
+        f"/lecture/{chapter_id}"
+        f"/sections/{section_number}"
+        f"/quiz/{quiz_id}/take"
+    )
+    return RedirectResponse(url=take_url, status_code=303)

@@ -360,3 +360,26 @@ td, th {
   background: #5b7a9c;
   color: #fff;
 }
+
+/* "Take this Quiz" button-styled link (ADR-038 §Take affordance / ADR-008: section-* → lecture.css) */
+.section-quiz-take-link {
+  display: inline-block;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.78rem;
+  padding: 0.2em 0.65em;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid #2a5a2a;
+  background: #fdfaf6;
+  color: #2a5a2a;
+  text-decoration: none;
+  white-space: nowrap;
+  line-height: 1.4;
+  margin-left: 0.5em;
+  transition: background 0.15s, color 0.15s;
+}
+
+.section-quiz-take-link:hover {
+  background: #2a5a2a;
+  color: #fff;
+}
