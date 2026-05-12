@@ -8,7 +8,7 @@ include = ["app*"]
 [project]
 name = "restructured-cs300"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
@@ -16,6 +16,7 @@ dependencies = [
     "jinja2>=3.1",
     "httpx>=0.24.0",
     "python-multipart>=0.0.6",
+    "jmdl-ai-workflows>=0.4",
 ]
 
 [project.optional-dependencies]

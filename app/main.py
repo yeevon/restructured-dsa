@@ -45,6 +45,7 @@ from app.persistence import (
     count_complete_sections_per_chapter,
     request_quiz,
     list_quizzes_for_chapter,
+    section_has_nonfailed_quiz,
 )
 
 # ---- Jinja2 environment ----
@@ -539,6 +540,20 @@ async def request_quiz_route(
         raise HTTPException(
             status_code=404,
             detail=f"Section not found: {section_id!r} in chapter {chapter_id!r}",
+        )
+
+    # --- First-Quiz-only guard (ADR-037 §The first-Quiz-only guard / MC-8) ---
+    # Reject a second request for a Section that already has a non-failed Quiz
+    # (status in {'requested', 'generating', 'ready'}). A generation_failed Quiz
+    # does NOT count — the author can re-click Generate after a failure.
+    # This prevents a fresh-only post-first Quiz (MC-8 violation) from being produced.
+    if section_has_nonfailed_quiz(section_id):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Section {section_id!r} already has a Quiz request in progress or "
+                "completed. The post-first-Quiz composition surface is not yet available."
+            ),
         )
 
     # --- Persist: insert a status='requested' Quiz row (ADR-033 / ADR-034) ---

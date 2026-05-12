@@ -23,6 +23,15 @@ Public API exported by this package:
   - request_quiz(section_id) -> Quiz            — insert status='requested' Quiz row
   - list_quizzes_for_section(section_id) -> list[Quiz]
   - list_quizzes_for_chapter(chapter_id) -> dict[str, list[Quiz]]
+
+  ADR-036 / ADR-037 Quiz generation (TASK-014):
+  - mark_quiz_generating(quiz_id) -> None
+  - mark_quiz_ready(quiz_id) -> None
+  - mark_quiz_generation_failed(quiz_id, error=None) -> None
+  - add_questions_to_quiz(quiz_id, questions) -> None
+  - list_requested_quizzes() -> list[Quiz]
+  - get_quiz(quiz_id) -> Quiz | None
+  - section_has_nonfailed_quiz(section_id) -> bool
 """
 
 from app.persistence.connection import init_schema
@@ -41,6 +50,13 @@ from app.persistence.quizzes import (
     request_quiz,
     list_quizzes_for_section,
     list_quizzes_for_chapter,
+    mark_quiz_generating,
+    mark_quiz_ready,
+    mark_quiz_generation_failed,
+    add_questions_to_quiz,
+    list_requested_quizzes,
+    get_quiz,
+    section_has_nonfailed_quiz,
 )
 
 __all__ = [
@@ -54,10 +70,18 @@ __all__ = [
     "is_section_complete",
     "list_complete_section_ids_for_chapter",
     "count_complete_sections_per_chapter",
-    # ADR-033 Quiz domain
+    # ADR-033 Quiz domain (TASK-013)
     "Quiz",
     "Question",
     "request_quiz",
     "list_quizzes_for_section",
     "list_quizzes_for_chapter",
+    # ADR-036 / ADR-037 Quiz generation (TASK-014)
+    "mark_quiz_generating",
+    "mark_quiz_ready",
+    "mark_quiz_generation_failed",
+    "add_questions_to_quiz",
+    "list_requested_quizzes",
+    "get_quiz",
+    "section_has_nonfailed_quiz",
 ]

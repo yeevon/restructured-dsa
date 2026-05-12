@@ -28,10 +28,10 @@ Lead the report with a count summary (`N blockers, M warnings, K dormant`). If z
 ## Rules
 
 ### MC-1 — No direct LLM/agent SDK use
-- **Trace:** manifest §4 (secondary objective: `ai-workflows` is the only AI engine the project commits to). The set of forbidden SDKs and the path where AI calls *are* allowed are defined by the AI-engine and source-layout ADRs (pending `/design`).
-- **Manifest portion (active):** application code does not call any LLM SDK directly. All AI work goes through the engine the manifest names.
-- **Architecture portion (dormant until ADR lands):** the specific list of forbidden SDK package names and the workflow module path come from the relevant Accepted ADRs.
-- Severity: **blocker** for the manifest portion; `cannot evaluate (ADR pending)` for the package-name check until an ADR enumerates the forbidden set.
+- **Trace:** manifest §4 (secondary objective: `ai-workflows` is the only AI engine the project commits to) + **ADR-036** (the `ai-workflows` integration — Accepted 2026-05-12; enumerates the forbidden-SDK set and names the workflow module path).
+- **Manifest portion (active):** application code does not call any LLM SDK directly. All AI work goes through `ai-workflows` (the engine the manifest names).
+- **Architecture portion (active per ADR-036):** application code under `app/` (including `app/workflows/`) must not `import` any of: `openai`, `anthropic`, `google.generativeai`, `google.genai`, `cohere`, `mistralai`, `groq`, `together`, `replicate` (or any other LLM-provider SDK); `litellm` (the unified adapter `ai-workflows` wraps); `langchain`, `langchain_*`, `langgraph`, `langgraph_*` (the orchestration layer `ai-workflows` wraps — CS-300 authors a `WorkflowSpec`, never a `StateGraph`); or a raw `httpx` / `requests` / `urllib` call to a provider's chat-completions / messages / generate endpoint (CS-300's existing `httpx`/`requests` use for `TestClient` and Playwright fixtures is fine — what is forbidden is a *direct LLM-API HTTP call* from `app/` code). The only AI dependency `app/` code imports is `ai_workflows.*` (the `WorkflowSpec` authoring API: `WorkflowSpec`, `LLMStep`, `ValidateStep`, `RetryPolicy`, `register_workflow`, plus `TierConfig` + a route type from `ai_workflows.primitives.tiers`); AI *invocation* goes through the `aiw` CLI subprocess (ADR-036). The CS-300 workflow module lives under `app/workflows/` (the question-generation workflow at `app/workflows/question_gen.py`).
+- Severity: **blocker** for the manifest portion **and** for the package-name / module-path check (ADR-036 Accepted).
 
 ### MC-2 — Quizzes scope to exactly one Section
 - **Trace:** manifest §6, §7.

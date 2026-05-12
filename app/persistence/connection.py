@@ -129,6 +129,26 @@ CREATE INDEX IF NOT EXISTS idx_attempt_questions_question_id ON attempt_question
 """
 
 
+def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
+    """
+    Apply additive ALTER TABLE migrations that cannot be expressed as
+    CREATE TABLE IF NOT EXISTS (ADR-022 §Migration story).
+
+    Each ALTER TABLE is guarded by a PRAGMA table_info check so it is
+    idempotent — running it on a database that already has the column is
+    a silent no-op.
+
+    ADR-037: adds nullable `quizzes.generation_error TEXT` for failure-detail
+    persistence (MC-5 debugging aid; not the learner-facing message).
+    """
+    # --- quizzes.generation_error (ADR-037 §Failure-handling discipline) ---
+    cur = conn.execute("PRAGMA table_info(quizzes)")
+    existing_cols = {row[1] for row in cur.fetchall()}
+    if "generation_error" not in existing_cols:
+        conn.execute("ALTER TABLE quizzes ADD COLUMN generation_error TEXT")
+        conn.commit()
+
+
 def get_connection() -> sqlite3.Connection:
     """
     Open a new SQLite connection to the database file and bootstrap the schema.
@@ -158,6 +178,8 @@ def get_connection() -> sqlite3.Connection:
     # Idempotent schema bootstrap on every fresh connection
     conn.executescript(_SCHEMA_SQL)
     conn.commit()
+    # Additive column migrations (ADR-022 §Migration story / ADR-037)
+    _apply_additive_migrations(conn)
     return conn
 
 

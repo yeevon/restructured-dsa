@@ -60,6 +60,7 @@ Use the commands defined by the repository config when present. If no command is
 
 - Run: `uvicorn app.main:app --host 127.0.0.1 --port 8000`
 - Test: `python3 -m pytest tests/`
+- Process pending Quiz requests (out-of-band Quiz-generation processor, ADR-037): `python -m app.workflows.process_quiz_requests`
 - Lint: `<project lint command>`
 - Type check: `<project type-check command>`
 

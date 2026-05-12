@@ -1,0 +1,168 @@
+"""
+app/workflows/question_gen — CS-300-owned question-generation WorkflowSpec.
+
+ADR-036 §Where the CS-300 workflow module lives:
+  This module defines and registers the `question_gen` ai-workflows workflow.
+  It is loaded via AIW_EXTRA_WORKFLOW_MODULES=app.workflows.question_gen when
+  the `aiw` CLI subprocess is invoked by the out-of-band processor
+  (app/workflows/process_quiz_requests.py).
+
+The workflow:
+  - Input:  QuestionGenInput (section_content: str, section_title: str)
+  - Output: QuestionGenOutput (questions: list[GeneratedQuestion])
+             where GeneratedQuestion has prompt: str and topics: list[str]
+  - One LLMStep with prompt_fn (not prompt_template — the Section content is
+    LaTeX and may contain { } characters; ADR-036).
+  - response_format=QuestionGenOutput (required; KDR-004).
+  - Tier: gemini/gemini-2.5-flash via LiteLLMRoute (ADR-036 default).
+
+Schema constraints (ADR-036 / Manifest §5 / §7):
+  - NO choice / correct_choice / answer_text / option_* / recall_* / describe_*
+    field in GeneratedQuestion or QuestionGenOutput. Every Question is a
+    hands-on coding task — the schema makes a non-coding Question inexpressible.
+
+MC-1: only ai_workflows.* imported (no openai / anthropic / litellm / langgraph etc.).
+MC-10: no DB driver imports; no SQL literals; no DB access.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+from ai_workflows.primitives.tiers import LiteLLMRoute, TierConfig
+from ai_workflows.workflows import LLMStep, WorkflowSpec, register_workflow
+
+
+# ---------------------------------------------------------------------------
+# Pydantic schemas — input and output
+# ---------------------------------------------------------------------------
+
+
+class QuestionGenInput(BaseModel):
+    """
+    Input to the question_gen workflow.
+
+    ADR-036 §Workflow module: section_content is the Section's parsed LaTeX text
+    (the prompt material); section_title is the Section's title for framing.
+    No learner-controlled num_questions this slice (ADR-034's surface is a single
+    submit button with no form fields).
+    """
+    section_content: str
+    section_title: str
+
+
+class GeneratedQuestion(BaseModel):
+    """
+    A single generated Question candidate.
+
+    ADR-036 §Workflow module:
+      - prompt: str — the coding-task instruction (e.g. "Implement X in C++").
+      - topics: list[str] — Topic tags for Weak-Topic identification later.
+
+    NO choice / correct_choice / answer_text / option_* / recall_* / describe_*
+    field — the schema makes a non-coding Question inexpressible.
+    Manifest §5: 'No non-coding Question formats.'
+    Manifest §7: 'Every Question is a hands-on coding task.'
+    """
+    prompt: str
+    topics: list[str]
+
+
+class QuestionGenOutput(BaseModel):
+    """
+    Output (terminal artefact) of the question_gen workflow.
+
+    ADR-036: the FIRST field is the terminal artefact per the framework's
+    FINAL_STATE_KEY convention — `questions: list[GeneratedQuestion]`.
+    The CLI prints json.dumps({"questions": [...]}, indent=2) on stdout.
+    """
+    questions: list[GeneratedQuestion]
+
+
+# ---------------------------------------------------------------------------
+# Tier registry
+# ---------------------------------------------------------------------------
+
+
+def question_gen_tier_registry() -> dict[str, TierConfig]:
+    """
+    Tier registry for the question_gen workflow.
+
+    ADR-036 §Workflow module: one LLM tier — gemini/gemini-2.5-flash via
+    LiteLLMRoute (the framework's worked-example default; needs GEMINI_API_KEY
+    at runtime). The specific provider/model is a tuning decision, not an
+    architectural commitment.
+    """
+    return {
+        "default": TierConfig(
+            name="default",
+            route=LiteLLMRoute(model="gemini/gemini-2.5-flash"),
+        )
+    }
+
+
+# ---------------------------------------------------------------------------
+# Prompt function
+# ---------------------------------------------------------------------------
+
+
+def _question_gen_prompt_fn(state: dict) -> tuple[str | None, list[dict]]:
+    """
+    Build the system + user prompt for the question_gen LLMStep.
+
+    ADR-036: uses prompt_fn (not prompt_template) because the Section content is
+    LaTeX and may contain { } characters which would collide with str.format
+    placeholders.
+
+    The prompt instructs the LLM to generate hands-on coding-task Questions
+    about the Section's content — never describe/recall/choose items.
+    """
+    section_content: str = state.get("section_content", "")
+    section_title: str = state.get("section_title", "")
+
+    system_prompt = (
+        "You are an expert computer science educator generating hands-on coding "
+        "questions for a data structures and algorithms course.\n\n"
+        "STRICT REQUIREMENTS:\n"
+        "1. Every question MUST be a hands-on CODING TASK that asks the student to "
+        "IMPLEMENT something in C++ (or C++/pseudocode as specified).\n"
+        "2. NEVER generate: multiple-choice questions, true/false questions, "
+        "short-answer/explain questions, describe-the-concept questions, "
+        "recall/define questions, or any question that does not require writing code.\n"
+        "3. Each question should target a specific implementable concept from the "
+        "Section content below.\n"
+        "4. Generate between 3 and 6 questions.\n"
+        "5. Each question must include 1-3 topic tags relevant to the concept being tested.\n"
+        "6. The 'prompt' field must be a clear, specific coding instruction "
+        "(e.g. 'Implement a hash table using open addressing in C++.').\n"
+    )
+
+    user_message = (
+        f"Section Title: {section_title}\n\n"
+        f"Section Content:\n{section_content}\n\n"
+        "Generate hands-on coding questions for this Section. Each question must ask "
+        "the student to implement a concept from this Section in code."
+    )
+
+    return system_prompt, [{"role": "user", "content": user_message}]
+
+
+# ---------------------------------------------------------------------------
+# WorkflowSpec registration (fires at import time)
+# ---------------------------------------------------------------------------
+
+_spec = WorkflowSpec(
+    name="question_gen",
+    input_schema=QuestionGenInput,
+    output_schema=QuestionGenOutput,
+    tiers=question_gen_tier_registry(),
+    steps=[
+        LLMStep(
+            tier="default",
+            prompt_fn=_question_gen_prompt_fn,
+            response_format=QuestionGenOutput,
+        ),
+    ],
+)
+
+register_workflow(_spec)
