@@ -2,7 +2,7 @@
 
 **Task file:** `design_docs/tasks/TASK-015-quiz-taking-surface-write-code-and-submit-attempt.md`
 **Started:** 2026-05-12T00:00:00Z
-**Status:** Reviewed
+**Status:** Committed
 **Current phase:** review
 
 ---
@@ -18,6 +18,7 @@
 | 2026-05-12T06:00:00Z | ADR-039 amendment (`get_latest_attempt_for_quiz`) reviewed | accepted | Human gated the implementer's in-flight accessor ("i'm fine with it") and edited ADR-039's title; architect/orchestrator folded it into ADR-039's function set + §Amendment note + architecture.md. `/auto` resumed at the verify phase. |
 | 2026-05-12T07:00:00Z | rendered-surface verification (TASK-015 Quiz-taking surface) | pending human | /auto run — visual check post-commit: review `tests/playwright/.screenshots/` (or open the take page + a Lecture page in a browser) per ADR-010; confirm (a) the take page presents each Question's coding-task prompt + an obviously-code `<textarea>`, not a multiple-choice/describe surface; (b) submitting leaves the learner on the honest "Submitted — grading not yet available." state, no fabricated score; (c) the "Take this Quiz" affordance appears only on `ready` Quizzes' `.section-quiz` entries and reaches the take surface; (d) the Lecture page (three-column layout, RHS Notes rail, completion affordance, other `.section-quiz` states) is unchanged. Then edit this row `pending human` → `pass`. |
 | 2026-05-12T07:00:00Z | take-and-submit sanity (TASK-015) | pending human | /auto run — manual exploratory pass post-commit: open a real `ready` Quiz (generate one via "Generate a Quiz for this Section" + `python -m app.workflows.process_quiz_requests`, or use one from the TASK-014 generation-sanity check), write code into each Question's field, submit; confirm the Attempt is recorded (`submitted` with the learner's code in each `attempt_questions.response`), the surface shows "Submitted — grading not yet available.", and nothing pretends the Quiz is graded. Then edit this row `pending human` → `pass`. |
+| 2026-05-12T08:00:00Z | Commit review | auto-accepted | /auto run — committed as `5b3bd43` (`feat(quiz): TASK-015 — Quiz-taking surface (write code, submit Attempt; no grading)`); reviewer Run 008 (READY TO COMMIT, 0 conformance blockers, 0 architecture leaks) was included in the commit. NOT pushed — human reviews this audit and decides whether to push. Only this post-commit Human-gates row + the header `Status: Reviewed → Committed` flip are uncommitted; fold them into a follow-up `chore(audit)` commit or `git commit --amend` per the project's pattern. |
 
 ---
 
