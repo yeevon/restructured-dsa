@@ -163,11 +163,14 @@ def _sniff_language(test_suite: str) -> str:
     return "unknown"
 
 
-def _run_cpp(test_suite: str, response: str, tmpdir: str) -> RunResult:
+def _run_cpp(test_suite: str, response: str, tmpdir: str, preamble: str = "") -> RunResult:
     """
     Compile-and-run the C++ splice in tmpdir.
 
-    ADR-042 §The splice: response + '\\n\\n' + test_suite → submission.cpp
+    ADR-042 §The splice (extended by ADR-047):
+      preamble + '\\n\\n' + response + '\\n\\n' + test_suite → submission.cpp
+      When preamble == "" (the default), the splice is byte-equivalent to ADR-042's
+      pre-task splice (leading empty preamble + separator = negligible leading newlines).
     ADR-042 §Compile step: g++ -std=c++17 submission.cpp -o submission
     ADR-042 §Run step: ./submission
     """
@@ -179,8 +182,11 @@ def _run_cpp(test_suite: str, response: str, tmpdir: str) -> RunResult:
             output="g++ not found on PATH; cannot compile C++ test suite",
         )
 
-    # Write the spliced source
-    source = response + "\n\n" + test_suite
+    # Write the spliced source (ADR-047: preamble + response + test_suite)
+    if preamble:
+        source = preamble + "\n\n" + response + "\n\n" + test_suite
+    else:
+        source = response + "\n\n" + test_suite
     src_path = Path(tmpdir) / "submission.cpp"
     bin_path = Path(tmpdir) / "submission"
     src_path.write_text(source, encoding="utf-8")
@@ -224,14 +230,16 @@ def _run_cpp(test_suite: str, response: str, tmpdir: str) -> RunResult:
     return _run_binary([str(bin_path)], tmpdir)
 
 
-def _run_python(test_suite: str, response: str, tmpdir: str) -> RunResult:
+def _run_python(test_suite: str, response: str, tmpdir: str, preamble: str = "") -> RunResult:
     """
-    Run the Python splice (response + test_suite) in tmpdir via python3.
+    Run the Python splice (preamble + response + test_suite) in tmpdir via python3.
 
-    ADR-042 §The supported languages (Python path):
-    The splice is response + '\\n\\n' + test_suite written to test_suite.py,
-    then run with `python3 test_suite.py`.  The test suite is expected to be
-    self-executing (an `if __name__ == '__main__'` block or similar).
+    ADR-042 §The supported languages (Python path) (extended by ADR-047):
+    The splice is preamble + '\\n\\n' + response + '\\n\\n' + test_suite written to
+    test_suite.py, then run with `python3 test_suite.py`. The test suite is expected
+    to be self-executing (an `if __name__ == '__main__'` block or similar).
+    When preamble == "" (the default), the splice is byte-equivalent to ADR-042's
+    pre-task splice.
     """
     if shutil.which("python3") is None:
         return RunResult(
@@ -240,7 +248,10 @@ def _run_python(test_suite: str, response: str, tmpdir: str) -> RunResult:
             output="python3 not found on PATH; cannot run Python test suite",
         )
 
-    source = response + "\n\n" + test_suite
+    if preamble:
+        source = preamble + "\n\n" + response + "\n\n" + test_suite
+    else:
+        source = response + "\n\n" + test_suite
     src_path = Path(tmpdir) / "test_suite.py"
     src_path.write_text(source, encoding="utf-8")
 
@@ -321,12 +332,12 @@ def _run_binary(cmd: list[str], tmpdir: str) -> RunResult:
 # ---------------------------------------------------------------------------
 
 
-def run_test_suite(test_suite: str, response: str) -> RunResult:
+def run_test_suite(test_suite: str, response: str, preamble: str = "") -> RunResult:
     """
     Execute the learner's `response` against the Question's `test_suite` in
     a sandboxed subprocess and return a structured RunResult.
 
-    ADR-042 §Decision:
+    ADR-042 §Decision (signature extended by ADR-047):
     1. Creates a fresh throwaway working directory via tempfile.mkdtemp().
        All files produced by the run (source, binary, any learner writes)
        land there.  The directory is removed (shutil.rmtree) in a finally
@@ -336,10 +347,10 @@ def run_test_suite(test_suite: str, response: str) -> RunResult:
        - 'import '/'def test'/'unittest'/'pytest' and no '#include' → Python
        - neither → RunResult(status='setup_error', passed=None,
                              output='unrecognized test-suite language')
-    3. For C++: writes response + '\\n\\n' + test_suite → submission.cpp,
-       compiles with `g++ -std=c++17`, runs the binary.
-    4. For Python: writes response + '\\n\\n' + test_suite → test_suite.py,
-       runs with `python3 test_suite.py`.
+    3. For C++: writes preamble + '\\n\\n' + response + '\\n\\n' + test_suite →
+       submission.cpp, compiles with `g++ -std=c++17`, runs the binary.
+    4. For Python: writes preamble + '\\n\\n' + response + '\\n\\n' + test_suite →
+       test_suite.py, runs with `python3 test_suite.py`.
     5. The child runs cwd=tmpdir (never under content/latex/ or data/).
        The corpus path is never passed to the child.  MC-6 preserved.
     6. The child is subject to POSIX rlimits (CPU, address space, process
@@ -354,6 +365,12 @@ def run_test_suite(test_suite: str, response: str) -> RunResult:
        RunResult(status='setup_error', passed=None, output=...)
          — unrecognized language, g++/python3 not on PATH, or other setup failure
 
+    ADR-047 §The splice: preamble + response + test_suite in one TU.
+      When preamble == "" (the default), the splice is byte-equivalent to ADR-042's
+      pre-task splice — pre-task call-sites continue to work unchanged.
+      Pre-TASK-018 Questions in the Bank (preamble = NULL in the DB, coerced to ""
+      by the route's `question.preamble or ""` guard) also splice byte-equivalently.
+
     MC-1: no LLM SDK, no AI-workflow imports — this is code execution, not AI.
     MC-5 spirit: a failure (timeout/compile_error/setup_error) is reported
       as that status, never as a fabricated passed=True/False.
@@ -366,9 +383,9 @@ def run_test_suite(test_suite: str, response: str) -> RunResult:
     try:
         lang = _sniff_language(test_suite)
         if lang == "cpp":
-            return _run_cpp(test_suite, response, tmpdir)
+            return _run_cpp(test_suite, response, tmpdir, preamble=preamble)
         elif lang == "python":
-            return _run_python(test_suite, response, tmpdir)
+            return _run_python(test_suite, response, tmpdir, preamble=preamble)
         else:
             return RunResult(
                 status="setup_error",

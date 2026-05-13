@@ -85,6 +85,8 @@ CREATE INDEX IF NOT EXISTS idx_quizzes_section_id ON quizzes (section_id);
 --   prompt = coding-task description; topics = '|'-delimited tag list.
 --   test_suite = runnable test source code (ADR-040/ADR-041); nullable so
 --     pre-TASK-016 rows have test_suite IS NULL without error.
+--   preamble = shared struct/class/header shapes (ADR-045/ADR-046); nullable so
+--     pre-TASK-018 rows have preamble IS NULL without error.
 -- NO choice/recall/describe columns.
 CREATE TABLE IF NOT EXISTS questions (
     question_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +94,7 @@ CREATE TABLE IF NOT EXISTS questions (
     prompt      TEXT    NOT NULL,
     topics      TEXT    NOT NULL DEFAULT '',
     test_suite  TEXT,
+    preamble    TEXT,
     created_at  TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_questions_section_id ON questions (section_id);
@@ -172,6 +175,20 @@ def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
     questions_cols = {row[1] for row in cur.fetchall()}
     if "test_suite" not in questions_cols:
         conn.execute("ALTER TABLE questions ADD COLUMN test_suite TEXT")
+        conn.commit()
+
+    # --- questions.preamble (ADR-046 §The storage) ---
+    # Mirrors ADR-041's test_suite recipe.
+    # Nullable: NULL = "no recorded preamble" (legacy rows only, pre-TASK-018).
+    # An empty string "" = "TASK-018+ Question that needs no shared shapes"
+    # (a real and valid semantic per ADR-045).
+    # A non-empty string = "the shared struct/class/header shapes".
+    # Three-way distinction requires nullable (NOT NULL DEFAULT '' would collapse
+    # the NULL and "" cases — see ADR-046 §Alternatives §B).
+    cur = conn.execute("PRAGMA table_info(questions)")
+    questions_cols_2 = {row[1] for row in cur.fetchall()}
+    if "preamble" not in questions_cols_2:
+        conn.execute("ALTER TABLE questions ADD COLUMN preamble TEXT")
         conn.commit()
 
     # --- attempt_questions test-result columns (ADR-044 §The column shape) ---

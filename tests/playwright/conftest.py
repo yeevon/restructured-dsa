@@ -11,18 +11,34 @@ by the pytest-playwright plugin.
 
 Test artifacts (screenshots, traces) are written by pytest-playwright to
 the `tests/playwright/artifacts/` directory per ADR-010.
+
+TASK-018 extension: the live_server now runs uvicorn in a background thread
+(not a subprocess) so that `os.environ` mutations made inside test bodies
+are immediately visible to the server.  This is required for the TASK-018
+preamble-DOM tests, which set NOTES_DB_PATH to a per-test tmp_path DB before
+calling page.goto() to bootstrap the schema.
+
+The thread-based server still behaves identically to the subprocess-based one
+for existing tests — they neither set nor read NOTES_DB_PATH and continue to
+use the default data/notes.db path.
+
+An autouse function-scoped `_restore_notes_db_path` fixture saves the current
+NOTES_DB_PATH (or its absence) before each test and restores it afterwards,
+so a TASK-018 test cannot leak its tmp_path DB path into subsequent tests.
 """
 
 from __future__ import annotations
 
-import socket
-import subprocess
-import sys
-import time
+import asyncio
+import os
 import pathlib
+import socket
+import threading
+import time
 
 import pytest
 import requests
+import uvicorn
 
 
 def _find_free_port() -> int:
@@ -33,19 +49,73 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+class _ThreadedUvicorn:
+    """
+    Runs uvicorn in a background daemon thread so that os.environ mutations
+    in the test process are visible to the ASGI app at request-handling time.
+
+    ADR-010: session-scoped; Playwright tests use `page.goto(live_server + "/path")`.
+    TASK-018: thread-based (not subprocess-based) so NOTES_DB_PATH env var set in a
+    test body is picked up by the server's get_connection() call (which reads
+    os.environ at call time, not at server startup time).
+    """
+
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._server: uvicorn.Server | None = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        # Import app here (not at module level) so NOTES_DB_PATH monkeypatches
+        # applied before the server starts are visible.
+        from app.main import app  # noqa: PLC0415
+
+        config = uvicorn.Config(
+            app=app,
+            host=self.host,
+            port=self.port,
+            loop="asyncio",
+            log_level="error",
+            access_log=False,
+        )
+        self._server = uvicorn.Server(config=config)
+
+        # Create a dedicated event loop for this server thread.
+        self._loop = asyncio.new_event_loop()
+
+        def _run() -> None:
+            asyncio.set_event_loop(self._loop)
+            self._loop.run_until_complete(self._server.serve())
+
+        self._thread = threading.Thread(target=_run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.should_exit = True
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        if self._loop is not None and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+
+
 @pytest.fixture(scope="session")
 def live_server():
     """
-    Start `uvicorn app.main:app` on a free port for the test session.
+    Start `uvicorn app.main:app` in a background thread for the test session.
 
     Yields the base URL string (e.g. "http://127.0.0.1:54321").
 
     ADR-010: session-scoped `live_server` fixture starts uvicorn on a free
     port; Playwright tests use `page.goto(live_server + "/path")`.
 
-    The fixture uses `subprocess.Popen` so the FastAPI app runs in a separate
-    OS process.  This ensures Playwright drives a real browser against a real
-    HTTP server — not an in-process test client.
+    TASK-018 change: uses a background thread instead of subprocess so that
+    os.environ changes in test bodies (e.g. NOTES_DB_PATH = tmp_path/db.db) are
+    visible to the server when it handles the subsequent page.goto() call.
+    The server's _get_db_path() reads os.environ at call time, so setting
+    NOTES_DB_PATH before calling page.goto() bootstraps the correct DB.
 
     CONTENT_ROOT: the fixture inherits the default `app.config.CONTENT_ROOT`
     from the application (which points at `content/latex/`).  The live
@@ -57,15 +127,8 @@ def live_server():
     host = "127.0.0.1"
     base_url = f"http://{host}:{port}"
 
-    repo_root = pathlib.Path(__file__).parent.parent.parent
-    # Launch uvicorn as a subprocess so pytest-playwright's browser can hit it
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", host, "--port", str(port)],
-        cwd=str(repo_root),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    server = _ThreadedUvicorn(host=host, port=port)
+    server.start()
 
     # Wait for the server to become ready (poll GET / up to 10 seconds)
     deadline = time.monotonic() + 10.0
@@ -79,8 +142,7 @@ def live_server():
             last_exc = exc
         time.sleep(0.15)
     else:
-        proc.terminate()
-        proc.wait(timeout=5)
+        server.stop()
         raise RuntimeError(
             f"live_server did not become ready on {base_url} within 10 s. "
             f"Last error: {last_exc!r}"
@@ -88,9 +150,24 @@ def live_server():
 
     yield base_url
 
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+    server.stop()
+
+
+@pytest.fixture(autouse=True)
+def _restore_notes_db_path():
+    """
+    Save and restore NOTES_DB_PATH around each test.
+
+    TASK-018: the preamble-DOM tests set os.environ["NOTES_DB_PATH"] to a
+    per-test tmp_path DB.  Without this fixture, that leaked env var would
+    remain set for subsequent tests and cause them to hit a now-deleted DB path.
+
+    autouse=True means this fixture runs for every Playwright test without
+    any test needing to request it explicitly.
+    """
+    original = os.environ.get("NOTES_DB_PATH")
+    yield
+    if original is None:
+        os.environ.pop("NOTES_DB_PATH", None)
+    else:
+        os.environ["NOTES_DB_PATH"] = original

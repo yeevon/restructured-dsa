@@ -34,6 +34,15 @@
         <strong>Question {{ loop.index }}:</strong>
         {{ aq.prompt }}
       </div>
+      {# ADR-047: read-only preamble block — shared struct/class shapes the learner
+         and the test suite both depend on. Omitted when empty (Jinja truthiness
+         check handles both None (legacy rows) and "" (no shared shapes needed)). #}
+      {% if aq.preamble %}
+      <div class="quiz-take-preamble-wrapper">
+        <label class="quiz-take-preamble-label">Shared code — your implementation and the tests both depend on this:</label>
+        <pre class="quiz-take-preamble">{{ aq.preamble }}</pre>
+      </div>
+      {% endif %}
       {% if aq.test_suite %}
       <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre>
       {% endif %}
@@ -82,6 +91,13 @@
         <strong>Question {{ loop.index }}:</strong>
         {{ aq.prompt }}
       </div>
+      {# ADR-047: read-only preamble block — shared struct/class shapes. Omitted when empty. #}
+      {% if aq.preamble %}
+      <div class="quiz-take-preamble-wrapper">
+        <label class="quiz-take-preamble-label">Shared code — your implementation and the tests both depend on this:</label>
+        <pre class="quiz-take-preamble">{{ aq.preamble }}</pre>
+      </div>
+      {% endif %}
       {# ADR-043 §quiz_take.html.j2: read-only test-suite block (autoescaped — correct). #}
       {% if aq.test_suite %}
       <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre>

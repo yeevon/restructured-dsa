@@ -988,7 +988,10 @@ async def run_tests_route(
                 learner_code = responses.get(target_question_id, "")
 
                 if test_suite:
-                    result = run_test_suite(test_suite, learner_code)
+                    # ADR-047: pass preamble to sandbox splice
+                    # question.preamble may be None (legacy row) — coerce to ""
+                    preamble = question.preamble or ""
+                    result = run_test_suite(test_suite, learner_code, preamble=preamble)
                 else:
                     # No test suite — surface honestly as setup_error (ADR-043 §Handler flow)
                     from app.sandbox import RunResult  # noqa: PLC0415

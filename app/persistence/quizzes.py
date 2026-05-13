@@ -83,7 +83,7 @@ class Question:
     """
     A single questions row (Question Bank entry for a Section).
 
-    ADR-033 §Table set (extended by ADR-041):
+    ADR-033 §Table set (extended by ADR-041, further extended by ADR-046):
       question_id INTEGER PRIMARY KEY AUTOINCREMENT
       section_id  TEXT NOT NULL  (the Section whose Question Bank this belongs to)
       prompt      TEXT NOT NULL  (the coding-task prompt)
@@ -92,6 +92,11 @@ class Question:
                                  NULL only for a Question that predates TASK-016;
                                  every Question persisted from TASK-016 forward
                                  always has a non-empty test_suite)
+      preamble    str | None    (shared struct/class/header shapes — ADR-045/ADR-046;
+                                 NULL only for a Question that predates TASK-018;
+                                 "" = TASK-018+ Question that needs no shared shapes
+                                 (a real and valid semantic per ADR-045);
+                                 non-empty = the shared-shapes source)
       created_at  TEXT NOT NULL  (ISO-8601 UTC)
 
     No choice/recall/describe columns (manifest §5/§7: every Question is a
@@ -103,6 +108,7 @@ class Question:
     prompt: str
     topics: list[str]
     test_suite: str | None
+    preamble: str | None
     created_at: str
 
 
@@ -137,7 +143,10 @@ def _row_to_question(row: object) -> Question:
     """Convert a sqlite3.Row to a Question dataclass, splitting topics.
 
     ADR-041: the row→dataclass converter carries test_suite through.
+    ADR-046: the converter also carries preamble through.
     row["test_suite"] yields None for a NULL column (a legacy row) — matching
+    the str | None type on the Question dataclass.
+    row["preamble"] yields None for a NULL column (a pre-TASK-018 row) — matching
     the str | None type on the Question dataclass.
     """
     raw_topics = row["topics"] or ""
@@ -148,6 +157,7 @@ def _row_to_question(row: object) -> Question:
         prompt=row["prompt"],
         topics=topics,
         test_suite=row["test_suite"],
+        preamble=row["preamble"],
         created_at=row["created_at"],
     )
 
@@ -360,11 +370,12 @@ def add_questions_to_quiz(
             topics_list = q.get("topics", [])
             topics_str = "|".join(topics_list) if topics_list else ""
             test_suite = q["test_suite"]
+            preamble = q.get("preamble", "")
 
             cursor = conn.execute(
-                "INSERT INTO questions (section_id, prompt, topics, test_suite, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (section_id, prompt, topics_str, test_suite, now),
+                "INSERT INTO questions (section_id, prompt, topics, test_suite, preamble, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (section_id, prompt, topics_str, test_suite, preamble, now),
             )
             question_id = cursor.lastrowid
 
@@ -457,13 +468,17 @@ class AttemptQuestion:
     One Question's state within an Attempt — a convenience join of
     attempt_questions + the Question's prompt + quiz_questions.position.
 
-    ADR-039 §The AttemptQuestion dataclass (extended by ADR-044):
+    ADR-039 §The AttemptQuestion dataclass (extended by ADR-044, further by ADR-046):
       question_id  INTEGER  (FK → questions)
       prompt       TEXT     (the Question's coding-task prompt, from questions)
       response     TEXT | None  (the learner's code; NULL until submitted)
       position     INTEGER  (1-based order within the Quiz, from quiz_questions)
       test_suite   str | None  (the Question's runnable test source — ADR-041/ADR-044;
                                NULL for legacy rows predating TASK-016)
+      preamble     str | None  (shared struct/class/header shapes — ADR-045/ADR-046;
+                               NULL for legacy rows predating TASK-018;
+                               "" = TASK-018+ Question that needs no shared shapes;
+                               non-empty = shared-shapes source)
 
     ADR-044 §The AttemptQuestion dataclass: four test-result fields added:
       test_passed   bool | None  (True/False/None; None until first run or on failure)
@@ -482,6 +497,7 @@ class AttemptQuestion:
     response: str | None
     position: int
     test_suite: str | None = None
+    preamble: str | None = None
     test_passed: bool | None = None
     test_status: str | None = None
     test_output: str | None = None
@@ -504,6 +520,7 @@ def _row_to_attempt_question(row: object) -> AttemptQuestion:
     """Convert a sqlite3.Row to an AttemptQuestion dataclass.
 
     ADR-044 §AttemptQuestion: carries test_suite + four test_* fields through.
+    ADR-046: also carries preamble through via the questions join.
     test_passed: INTEGER 1/0/NULL → bool True/False/None (sqlite3 maps int→int;
     we convert explicitly to bool|None).
     """
@@ -519,6 +536,7 @@ def _row_to_attempt_question(row: object) -> AttemptQuestion:
         response=row["response"],
         position=row["position"],
         test_suite=row["test_suite"],
+        preamble=row["preamble"],
         test_passed=test_passed,
         test_status=row["test_status"],
         test_output=row["test_output"],
@@ -654,7 +672,7 @@ def list_questions_for_quiz(quiz_id: int) -> list[Question]:
     try:
         rows = conn.execute(
             "SELECT q.question_id, q.section_id, q.prompt, q.topics, "
-            "q.test_suite, q.created_at "
+            "q.test_suite, q.preamble, q.created_at "
             "FROM quiz_questions qq "
             "JOIN questions q ON qq.question_id = q.question_id "
             "WHERE qq.quiz_id = ? "
@@ -683,7 +701,7 @@ def list_attempt_questions(attempt_id: int) -> list[AttemptQuestion]:
     try:
         rows = conn.execute(
             "SELECT aq.question_id, q.prompt, aq.response, qq.position, "
-            "q.test_suite, aq.test_passed, aq.test_status, aq.test_output, aq.test_run_at "
+            "q.test_suite, q.preamble, aq.test_passed, aq.test_status, aq.test_output, aq.test_run_at "
             "FROM attempt_questions aq "
             "JOIN questions q ON aq.question_id = q.question_id "
             "JOIN quiz_questions qq ON aq.question_id = qq.question_id "
@@ -778,7 +796,7 @@ def get_question(question_id: int) -> "Question | None":
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT question_id, section_id, prompt, topics, test_suite, created_at "
+            "SELECT question_id, section_id, prompt, topics, test_suite, preamble, created_at "
             "FROM questions WHERE question_id = ?",
             (question_id,),
         ).fetchone()

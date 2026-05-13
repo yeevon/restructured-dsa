@@ -60,16 +60,21 @@ class GeneratedQuestion(BaseModel):
     """
     A single generated Question candidate.
 
-    ADR-036 §Workflow module (extended by ADR-040):
+    ADR-036 §Workflow module (extended by ADR-040, further extended by ADR-045):
       - prompt: str — the coding-task instruction (e.g. "Implement X in C++").
         The prompt must name the function/class signature the test suite tests,
         so the learner's implementation has a stable target.
       - topics: list[str] — Topic tags for Weak-Topic identification later.
-      - test_suite: str — a runnable test-code string that verifies an
-        implementation of the Question's coding task (ADR-040). min_length=1
-        so a literally-empty test suite is rejected at the validator layer.
-        Holds ONLY test source code — never an option list, a true/false key,
-        a "describe" prompt, or a recall answer (manifest §5/§7; ADR-040).
+      - test_suite: str — an assertion-only runnable test-code string that
+        verifies an implementation of the Question's coding task (ADR-040/ADR-045).
+        min_length=1 so a literally-empty test suite is rejected at the validator
+        layer. The test suite calls/instantiates the named target but does NOT
+        define it (assertion-only per ADR-045). Holds ONLY test source code —
+        never an option list, a true/false key, a "describe" prompt, or a recall
+        answer (manifest §5/§7; ADR-040).
+      - preamble: str — shared struct/class/header shapes that both the learner's
+        implementation and the test suite depend on (ADR-045). Empty string when
+        no shared shapes are needed. Never inside test_suite or prompt.
 
     NO choice / correct_choice / answer_text / option_* / recall_* / describe_*
     field — the schema makes a non-coding Question inexpressible.
@@ -81,6 +86,7 @@ class GeneratedQuestion(BaseModel):
     prompt: str
     topics: list[str]
     test_suite: str = Field(min_length=1)
+    preamble: str = Field(default="")
 
 
 class QuestionGenOutput(BaseModel):
@@ -178,14 +184,30 @@ def _question_gen_prompt_fn(state: dict) -> tuple[str | None, list[dict]]:
         "the function or class signature the student must implement "
         "(e.g. 'Implement a function `int* two_sum(const std::vector<int>& nums, int target)` "
         "that returns the indices of the two numbers that add up to target.').\n"
-        "7. The 'test_suite' field MUST be a self-contained, runnable test file "
-        "that verifies a correct implementation of the Question's prompt. "
-        "The test suite MUST call the exact function/class named in the 'prompt' field. "
-        "For C++ implementations, use assert-based cases in a main() function. "
-        "For Python implementations, use unittest.TestCase or standalone assert statements. "
-        "The test_suite field must contain ONLY test source code — never an option list, "
-        "a true/false key, a description, or a recall answer. "
+        "7. The 'test_suite' field MUST be an ASSERTION-ONLY test file that calls "
+        "(references, instantiates) the exact function/class named in the 'prompt' "
+        "field but does NOT define or implement it. Do not include a reference "
+        "implementation of the target function/class inside the test_suite. "
+        "The test suite assumes the learner's implementation will be compiled or run "
+        "together with it. For C++ implementations, use assert-based cases in a "
+        "main() function that calls the named function without defining it. "
+        "For Python implementations, use unittest.TestCase or standalone assert "
+        "statements that call the named function. "
+        "The test_suite field must contain ONLY assertion/test source code — never "
+        "an option list, a true/false key, a description, a recall answer, or a "
+        "reference implementation of the function being tested. "
         "A non-empty test_suite is REQUIRED for every question without exception.\n"
+        "8. The 'preamble' field MUST contain any struct definitions, class definitions, "
+        "typedefs, #include directives, or other header-style source code that BOTH "
+        "the learner's implementation AND the test_suite's assertions depend on. "
+        "For example, if the prompt asks the student to implement "
+        "'void append(LinkedList& list, int value)', and the test suite references "
+        "'struct Node' and 'struct LinkedList', then those struct definitions go in "
+        "the 'preamble' field — NOT inside 'test_suite' and NOT inside 'prompt'. "
+        "If the question requires no shared struct/class definitions (e.g. the "
+        "function only uses standard library types), set 'preamble' to an empty "
+        "string. The preamble must NOT embed a reference implementation of the "
+        "function being tested.\n"
     )
 
     user_message = (

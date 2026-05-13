@@ -240,3 +240,41 @@ pre.quiz-take-results-output {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ---------------------------------------------------------------------------
+   TASK-018 / ADR-047 additions — quiz-take-preamble (shared struct/class shapes)
+   --------------------------------------------------------------------------- */
+
+/* ---- Preamble wrapper + label ---- */
+.quiz-take-preamble-wrapper {
+  margin: 0.5rem 0 0.5rem;
+}
+
+.quiz-take-preamble-label {
+  font-size: 0.8rem;
+  color: #5a4a3a;
+  display: block;
+  margin-bottom: 0.2rem;
+  font-style: italic;
+}
+
+/* ---- Read-only shared-code preamble block (ADR-047 / ADR-008: quiz-take-* namespace)
+   Visually distinct from:
+     - .quiz-take-test-suite (green tint, green border — "the assertions")
+     - .quiz-take-response / textarea (warm tan — "your code")
+   Uses an amber/ochre tint with a left accent border to signal "shared context". ---- */
+pre.quiz-take-preamble {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: #fdf3e0;
+  border: 1px solid #d4a855;
+  border-left: 4px solid #c08030;
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre;
+  word-break: normal;
+}
