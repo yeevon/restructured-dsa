@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-017-in-app-test-runner.md`
 **Started:** 2026-05-12T00:00:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed
+**Current phase:** done
 
 ---
 
@@ -18,6 +18,7 @@
 | 2026-05-12T22:22:00Z | Tests reviewed | auto-accepted | /auto run — 65 new tests (44 failing red-phase: sandbox/persistence/route/template not built; 21 passing boundary greps; 1 skipped) + 8 Playwright; 851 existing tests still green |
 | 2026-05-12T23:05:00Z | rendered-surface verification — TASK-017 quiz-take test-runner | pending human | /auto run — visual check post-commit; no browser available in the loop's environment, the 8 Playwright DOM tests skipped — open the dev server (or `tests/playwright/.screenshots/`) and confirm the read-only test-suite block, the "Run tests" button, and the results panel (pass/fail + honest timeout/compile-error states) render per ADR-043; then edit `pending human` → `pass` |
 | 2026-05-12T23:05:00Z | in-app test-runner end-to-end sanity — TASK-017 | pending human | /auto run — visual/manual check post-commit. NOTE: per ADR-042 §The splice, ADR-040's *current* generated test suites embed a reference implementation inline → the runner reports an honest `compile_error` on a real generated Question (e.g. `quiz_id=6` from TASK-016), not pass/fail. To fill this gate, either (a) land the follow-on TASK from `design_docs/project_issues/question-gen-prompt-emit-assertion-only-test-suites.md` first, or (b) fill it against a hand-written assertion-only test suite. Then edit `pending human` → `pass` |
+| 2026-05-12T23:36:00Z | Commit review | auto-accepted | /auto run — reviewer verdict APPROVE / READY TO COMMIT (0 MC blockers, 0 warnings; all 11 programmatic ACs trace to passing tests; ADR-042/043/044 fidelity confirmed; architecture.md regeneration faithful); committed as `d5b183b` |
 
 ---
 
