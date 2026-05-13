@@ -83,11 +83,15 @@ class Question:
     """
     A single questions row (Question Bank entry for a Section).
 
-    ADR-033 §Table set:
+    ADR-033 §Table set (extended by ADR-041):
       question_id INTEGER PRIMARY KEY AUTOINCREMENT
       section_id  TEXT NOT NULL  (the Section whose Question Bank this belongs to)
       prompt      TEXT NOT NULL  (the coding-task prompt)
       topics      list[str]     (split from the '|'-delimited column; [] when empty)
+      test_suite  str | None    (runnable test source code — ADR-040/ADR-041;
+                                 NULL only for a Question that predates TASK-016;
+                                 every Question persisted from TASK-016 forward
+                                 always has a non-empty test_suite)
       created_at  TEXT NOT NULL  (ISO-8601 UTC)
 
     No choice/recall/describe columns (manifest §5/§7: every Question is a
@@ -98,6 +102,7 @@ class Question:
     section_id: str
     prompt: str
     topics: list[str]
+    test_suite: str | None
     created_at: str
 
 
@@ -129,7 +134,12 @@ def _row_to_quiz(row: object) -> Quiz:
 
 
 def _row_to_question(row: object) -> Question:
-    """Convert a sqlite3.Row to a Question dataclass, splitting topics."""
+    """Convert a sqlite3.Row to a Question dataclass, splitting topics.
+
+    ADR-041: the row→dataclass converter carries test_suite through.
+    row["test_suite"] yields None for a NULL column (a legacy row) — matching
+    the str | None type on the Question dataclass.
+    """
     raw_topics = row["topics"] or ""
     topics = [t for t in raw_topics.split("|") if t]
     return Question(
@@ -137,6 +147,7 @@ def _row_to_question(row: object) -> Question:
         section_id=row["section_id"],
         prompt=row["prompt"],
         topics=topics,
+        test_suite=row["test_suite"],
         created_at=row["created_at"],
     )
 
@@ -311,17 +322,21 @@ def add_questions_to_quiz(
     Persist generated Questions to the Section's Question Bank and link them to
     the Quiz via quiz_questions rows.
 
-    ADR-036 §The orchestration boundary: for each item in `questions` (dicts with
-    'prompt' and 'topics' keys, drawn from the workflow's GeneratedQuestion output):
-      - INSERT INTO questions (section_id, prompt, topics, created_at)
-        with section_id from the Quiz's section_id (MC-2 — exactly one Section)
-        and topics '|'-joined (ADR-033 §Topic tags).
+    ADR-036 §The orchestration boundary (extended by ADR-041): for each item in
+    `questions` (dicts with 'prompt', 'topics', and 'test_suite' keys, drawn from
+    the workflow's GeneratedQuestion output — ADR-040/ADR-041):
+      - INSERT INTO questions (section_id, prompt, topics, test_suite, created_at)
+        with section_id from the Quiz's section_id (MC-2 — exactly one Section),
+        topics '|'-joined (ADR-033 §Topic tags), and test_suite from q["test_suite"].
       - INSERT INTO quiz_questions (quiz_id, question_id, position) 1-based.
     All within one transaction.
 
-    `questions` is a list of dicts: [{"prompt": str, "topics": list[str]}, ...].
-    The caller is responsible for sanity-checking that questions is non-empty
-    and each prompt is non-empty (ADR-037 §Decision).
+    `questions` is a list of dicts:
+      [{"prompt": str, "topics": list[str], "test_suite": str}, ...].
+    The caller is responsible for sanity-checking that questions is non-empty,
+    each prompt is non-empty (ADR-037 §Decision), and each test_suite is
+    non-empty (ADR-040 §Bad-test-suite failure handling — the processor performs
+    a whole-Quiz check before calling this function).
 
     MC-2: every Question carries the same section_id as the Quiz.
     MC-10: SQL stays here.
@@ -344,11 +359,12 @@ def add_questions_to_quiz(
             prompt = q["prompt"]
             topics_list = q.get("topics", [])
             topics_str = "|".join(topics_list) if topics_list else ""
+            test_suite = q["test_suite"]
 
             cursor = conn.execute(
-                "INSERT INTO questions (section_id, prompt, topics, created_at) "
-                "VALUES (?, ?, ?, ?)",
-                (section_id, prompt, topics_str, now),
+                "INSERT INTO questions (section_id, prompt, topics, test_suite, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (section_id, prompt, topics_str, test_suite, now),
             )
             question_id = cursor.lastrowid
 
@@ -608,7 +624,8 @@ def list_questions_for_quiz(quiz_id: int) -> list[Question]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT q.question_id, q.section_id, q.prompt, q.topics, q.created_at "
+            "SELECT q.question_id, q.section_id, q.prompt, q.topics, "
+            "q.test_suite, q.created_at "
             "FROM quiz_questions qq "
             "JOIN questions q ON qq.question_id = q.question_id "
             "WHERE qq.quiz_id = ? "

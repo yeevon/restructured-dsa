@@ -10,7 +10,8 @@ ADR-036 §Where the CS-300 workflow module lives:
 The workflow:
   - Input:  QuestionGenInput (section_content: str, section_title: str)
   - Output: QuestionGenOutput (questions: list[GeneratedQuestion])
-             where GeneratedQuestion has prompt: str and topics: list[str]
+             where GeneratedQuestion has prompt: str, topics: list[str], and
+             test_suite: str (min_length=1 — ADR-040)
   - One LLMStep with prompt_fn (not prompt_template — the Section content is
     LaTeX and may contain { } characters; ADR-036).
   - response_format=QuestionGenOutput (required; KDR-004).
@@ -29,7 +30,7 @@ from __future__ import annotations
 
 import os
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_workflows.primitives.tiers import LiteLLMRoute, TierConfig
 from ai_workflows.workflows import LLMStep, WorkflowSpec, register_workflow
@@ -59,9 +60,16 @@ class GeneratedQuestion(BaseModel):
     """
     A single generated Question candidate.
 
-    ADR-036 §Workflow module:
+    ADR-036 §Workflow module (extended by ADR-040):
       - prompt: str — the coding-task instruction (e.g. "Implement X in C++").
+        The prompt must name the function/class signature the test suite tests,
+        so the learner's implementation has a stable target.
       - topics: list[str] — Topic tags for Weak-Topic identification later.
+      - test_suite: str — a runnable test-code string that verifies an
+        implementation of the Question's coding task (ADR-040). min_length=1
+        so a literally-empty test suite is rejected at the validator layer.
+        Holds ONLY test source code — never an option list, a true/false key,
+        a "describe" prompt, or a recall answer (manifest §5/§7; ADR-040).
 
     NO choice / correct_choice / answer_text / option_* / recall_* / describe_*
     field — the schema makes a non-coding Question inexpressible.
@@ -72,6 +80,7 @@ class GeneratedQuestion(BaseModel):
 
     prompt: str
     topics: list[str]
+    test_suite: str = Field(min_length=1)
 
 
 class QuestionGenOutput(BaseModel):
@@ -165,8 +174,18 @@ def _question_gen_prompt_fn(state: dict) -> tuple[str | None, list[dict]]:
         "Section content below.\n"
         "4. Generate between 3 and 6 questions.\n"
         "5. Each question must include 1-3 topic tags relevant to the concept being tested.\n"
-        "6. The 'prompt' field must be a clear, specific coding instruction "
-        "(e.g. 'Implement a hash table using open addressing in C++.').\n"
+        "6. The 'prompt' field must be a clear, specific coding instruction that NAMES "
+        "the function or class signature the student must implement "
+        "(e.g. 'Implement a function `int* two_sum(const std::vector<int>& nums, int target)` "
+        "that returns the indices of the two numbers that add up to target.').\n"
+        "7. The 'test_suite' field MUST be a self-contained, runnable test file "
+        "that verifies a correct implementation of the Question's prompt. "
+        "The test suite MUST call the exact function/class named in the 'prompt' field. "
+        "For C++ implementations, use assert-based cases in a main() function. "
+        "For Python implementations, use unittest.TestCase or standalone assert statements. "
+        "The test_suite field must contain ONLY test source code — never an option list, "
+        "a true/false key, a description, or a recall answer. "
+        "A non-empty test_suite is REQUIRED for every question without exception.\n"
     )
 
     user_message = (

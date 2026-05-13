@@ -83,12 +83,15 @@ CREATE INDEX IF NOT EXISTS idx_quizzes_section_id ON quizzes (section_id);
 -- The Question Bank for a Section (manifest §8 "never deleted").
 -- Every Question is a hands-on coding task (manifest §5/§7):
 --   prompt = coding-task description; topics = '|'-delimited tag list.
+--   test_suite = runnable test source code (ADR-040/ADR-041); nullable so
+--     pre-TASK-016 rows have test_suite IS NULL without error.
 -- NO choice/recall/describe columns.
 CREATE TABLE IF NOT EXISTS questions (
     question_id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id  TEXT    NOT NULL,
     prompt      TEXT    NOT NULL,
     topics      TEXT    NOT NULL DEFAULT '',
+    test_suite  TEXT,
     created_at  TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_questions_section_id ON questions (section_id);
@@ -151,6 +154,18 @@ def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
     existing_cols = {row[1] for row in cur.fetchall()}
     if "generation_error" not in existing_cols:
         conn.execute("ALTER TABLE quizzes ADD COLUMN generation_error TEXT")
+        conn.commit()
+
+    # --- questions.test_suite (ADR-041 §The storage) ---
+    # Mirrors the quizzes.generation_error precedent above.
+    # Nullable: NULL = "no recorded test suite" (legacy rows only).
+    # A Question persisted from TASK-016 forward always has a non-empty test_suite
+    # because ADR-040's processor fails the whole Quiz rather than persist a
+    # Question without one (MC-5).
+    cur = conn.execute("PRAGMA table_info(questions)")
+    questions_cols = {row[1] for row in cur.fetchall()}
+    if "test_suite" not in questions_cols:
+        conn.execute("ALTER TABLE questions ADD COLUMN test_suite TEXT")
         conn.commit()
 
 

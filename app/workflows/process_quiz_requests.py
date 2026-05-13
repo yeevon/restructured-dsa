@@ -224,7 +224,7 @@ def process_pending() -> None:
                 print(f"  FAILED quiz_id={quiz_id}: {error_msg}", file=sys.stderr)
                 continue
 
-            # Step d: validate the artefact (CS-300 sanity check — ADR-036)
+            # Step d: validate the artefact (CS-300 sanity check — ADR-036/ADR-040)
             raw_questions = artefact.get("questions", [])
 
             # Filter to questions with non-empty prompt
@@ -238,6 +238,30 @@ def process_pending() -> None:
                 error_msg = (
                     "Generation produced no valid coding-task Questions "
                     "(empty questions list or all prompts empty)"
+                )
+                mark_quiz_generation_failed(quiz_id, error=error_msg)
+                print(f"  FAILED quiz_id={quiz_id}: {error_msg}", file=sys.stderr)
+                continue
+
+            # ADR-040 §Bad-test-suite failure handling (MC-5):
+            # Whole-Quiz check: if ANY question is missing its test_suite, or its
+            # test_suite is empty / whitespace-only, the WHOLE Quiz is generation_failed.
+            # Zero questions rows persisted. No placeholder test suite synthesized.
+            # Mirrors the existing "no valid coding-task Questions" whole-artefact check.
+            bad_ts_question = None
+            for q in valid_questions:
+                ts = q.get("test_suite", None)
+                if ts is None or (isinstance(ts, str) and not ts.strip()):
+                    bad_ts_question = q
+                    break
+
+            if bad_ts_question is not None:
+                prompt_prefix = str(bad_ts_question.get("prompt", ""))[:60]
+                error_msg = (
+                    f"Generation produced a Question with no test suite "
+                    f"(prompt: {prompt_prefix!r}). "
+                    "A Question without a real test suite is not shippable "
+                    "(ADR-040 §Bad-test-suite failure handling / MC-5)."
                 )
                 mark_quiz_generation_failed(quiz_id, error=error_msg)
                 print(f"  FAILED quiz_id={quiz_id}: {error_msg}", file=sys.stderr)

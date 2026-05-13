@@ -290,8 +290,8 @@ def test_processor_happy_path_requested_to_ready(tmp_path, monkeypatch) -> None:
 
     # Mock the subprocess to return a successful artefact
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a hash table with open addressing.", "topics": ["hashing", "arrays"]},
-        {"prompt": "Write a binary search function.", "topics": ["search", "binary-search"]},
+        {"prompt": "Implement a hash table with open addressing.", "topics": ["hashing", "arrays"], "test_suite": "def test_hash_table():\n    ht = HashTable()\n    ht.insert(1, 'a')\n    assert ht.get(1) == 'a'\n"},
+        {"prompt": "Write a binary search function.", "topics": ["search", "binary-search"], "test_suite": "def test_binary_search():\n    assert binary_search([1, 2, 3, 4, 5], 3) == 2\n    assert binary_search([1, 2, 3], 9) == -1\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -344,7 +344,7 @@ def test_processor_happy_path_questions_have_nonempty_prompt(tmp_path, monkeypat
     )
 
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a stack using an array.", "topics": ["stack", "arrays"]},
+        {"prompt": "Implement a stack using an array.", "topics": ["stack", "arrays"], "test_suite": "def test_stack():\n    s = Stack()\n    s.push(1)\n    assert s.pop() == 1\n    assert s.is_empty()\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -378,8 +378,8 @@ def test_processor_happy_path_quiz_questions_position_set(tmp_path, monkeypatch)
     )
 
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a queue using two stacks.", "topics": ["queue", "stacks"]},
-        {"prompt": "Implement a linked list with O(1) prepend.", "topics": ["linked-list"]},
+        {"prompt": "Implement a queue using two stacks.", "topics": ["queue", "stacks"], "test_suite": "def test_queue():\n    q = Queue()\n    q.enqueue(1)\n    assert q.dequeue() == 1\n"},
+        {"prompt": "Implement a linked list with O(1) prepend.", "topics": ["linked-list"], "test_suite": "def test_linked_list():\n    ll = LinkedList()\n    ll.prepend(42)\n    assert ll.head.val == 42\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -411,7 +411,7 @@ def test_processor_happy_path_questions_section_id_matches(tmp_path, monkeypatch
     )
 
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a binary search tree insert.", "topics": ["BST"]},
+        {"prompt": "Implement a binary search tree insert.", "topics": ["BST"], "test_suite": "def test_bst_insert():\n    bst = BST()\n    bst.insert(5)\n    assert bst.search(5) is True\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -454,7 +454,7 @@ def test_processor_happy_path_surface_shows_ready(tmp_path, monkeypatch) -> None
     )
 
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a min-heap.", "topics": ["heaps"]},
+        {"prompt": "Implement a min-heap.", "topics": ["heaps"], "test_suite": "def test_min_heap():\n    h = MinHeap()\n    h.insert(3)\n    h.insert(1)\n    assert h.extract_min() == 1\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -969,8 +969,8 @@ def test_no_cross_section_questions_in_quiz(tmp_path, monkeypatch) -> None:
     )
 
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a trie.", "topics": ["trie", "strings"]},
-        {"prompt": "Implement a segment tree.", "topics": ["segment-tree"]},
+        {"prompt": "Implement a trie.", "topics": ["trie", "strings"], "test_suite": "def test_trie():\n    t = Trie()\n    t.insert('hello')\n    assert t.search('hello') is True\n"},
+        {"prompt": "Implement a segment tree.", "topics": ["segment-tree"], "test_suite": "def test_segment_tree():\n    st = SegmentTree([1, 2, 3, 4])\n    assert st.query(0, 3) == 10\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -1028,7 +1028,7 @@ def test_first_quiz_guard_boundary_ready_blocks_second(tmp_path, monkeypatch) ->
         follow_redirects=False,
     )
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement a red-black tree rotation.", "topics": ["red-black-tree"]},
+        {"prompt": "Implement a red-black tree rotation.", "topics": ["red-black-tree"], "test_suite": "def test_rbtree_rotation():\n    tree = RBTree()\n    tree.insert(10)\n    assert tree.root is not None\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -1291,7 +1291,7 @@ def test_generation_error_column_is_nullable_for_nonfailed_quizzes(tmp_path, mon
     )
 
     success_stdout = _make_success_stdout([
-        {"prompt": "Implement DFS on an adjacency list graph.", "topics": ["graphs", "DFS"]},
+        {"prompt": "Implement DFS on an adjacency list graph.", "topics": ["graphs", "DFS"], "test_suite": "def test_dfs():\n    graph = {0: [1, 2], 1: [3], 2: [], 3: []}\n    visited = dfs(graph, 0)\n    assert set(visited) == {0, 1, 2, 3}\n"},
     ])
     mock_proc = _make_completed_process(stdout=success_stdout)
     _run_processor(monkeypatch, db_path, mock_proc)
@@ -1757,7 +1757,11 @@ def test_processor_happy_path_with_multiple_questions_within_budget(tmp_path, mo
     )
 
     questions = [
-        {"prompt": f"Implement data structure #{i}: a self-balancing BST.", "topics": [f"ds-{i}", "BST"]}
+        {
+            "prompt": f"Implement data structure #{i}: a self-balancing BST.",
+            "topics": [f"ds-{i}", "BST"],
+            "test_suite": f"def test_ds_{i}():\n    t = AVLTree()\n    t.insert({i})\n    assert t.search({i}) is True\n",
+        }
         for i in range(5)
     ]
     success_stdout = _make_success_stdout(questions)
