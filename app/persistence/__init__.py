@@ -43,6 +43,11 @@ Public API exported by this package:
   - list_attempt_questions(attempt_id) -> list[AttemptQuestion]
   - save_attempt_responses(attempt_id, responses: dict[int, str]) -> None
   - submit_attempt(attempt_id) -> None          — flip to submitted; does NOT invoke grading
+
+  ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017):
+  - get_question(question_id) -> Question | None — accessor for a Question by id
+  - save_attempt_test_result(attempt_id, question_id, *, passed, status, output,
+                              run_at=None) -> None — write test-run result columns
 """
 
 from app.persistence.connection import init_schema
@@ -77,6 +82,9 @@ from app.persistence.quizzes import (
     list_attempt_questions,
     save_attempt_responses,
     submit_attempt,
+    # ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017)
+    get_question,
+    save_attempt_test_result,
 )
 
 __all__ = [
@@ -114,4 +122,7 @@ __all__ = [
     "list_attempt_questions",
     "save_attempt_responses",
     "submit_attempt",
+    # ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017)
+    "get_question",
+    "save_attempt_test_result",
 ]

@@ -94,10 +94,11 @@ Coverage matrix:
         After a processor walk to ready (with test suites), the per-Section
         Quiz surface shows "Ready" + take-link and does NOT show any "Run tests"
         affordance (ADR-040: surface unchanged; ADR-040 Alternative E rejected).
-    - test_take_surface_unchanged:
-        The take page (ADR-038's quiz_take.html.j2) renders the prompts/responses
-        exactly as before — does NOT render a "test_suite" field from the Question
-        row (that is the runner-slice's job, not TASK-016's — ADR-040).
+    - test_take_surface_renders_prompt_and_test_suite:
+        The take page (ADR-038/ADR-043's quiz_take.html.j2) renders the Question
+        prompt unchanged AND renders the Question's test_suite read-only in a
+        <pre class="quiz-take-test-suite"> block (ADR-043 §quiz_take.html.j2
+        changes — the runner slice that resolved ADR-040's deferral).
   Performance:
     - test_processor_with_five_questions_persists_all_within_budget:
         Processing a Quiz with 5 generated questions (each with a test_suite)
@@ -1337,26 +1338,32 @@ def test_section_quiz_surface_unchanged_for_ready_quiz(
 
 
 # ===========================================================================
-# AC-8 — Take surface unchanged (renders prompts/responses only, no test_suite)
-# Trace: TASK-016 AC-8; ADR-040 §Take surface (unchanged); ADR-038; ADR-039
+# AC-8 — Take surface renders prompt AND test_suite (ADR-043 resolved ADR-040 deferral)
+# Trace: TASK-016 AC-8; ADR-040 §Take surface (deferred to runner slice);
+#        ADR-043 §quiz_take.html.j2 changes (decided: show test_suite read-only);
+#        ADR-038; ADR-039
 # ===========================================================================
 
 
-def test_take_surface_unchanged(tmp_path, monkeypatch) -> None:
+def test_take_surface_renders_prompt_and_test_suite(tmp_path, monkeypatch) -> None:
     """
-    AC-8 (TASK-016) / ADR-040 §Take surface (unchanged): the Quiz-taking surface
-    (ADR-038's quiz_take.html.j2) must render the Question prompt and the learner's
-    response field as before and must NOT render the Question's `test_suite` field
-    to the learner (that is a UX decision the in-app-runner slice owns — ADR-040).
+    AC-8 (TASK-016) / ADR-043 §quiz_take.html.j2 changes: the Quiz-taking surface
+    must render the Question prompt (unchanged from ADR-038) AND must render the
+    Question's test_suite as a read-only block — a
+    <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre> per in_progress
+    Question (ADR-043 is the in-app-runner slice that resolved ADR-040's deferral).
 
-    ADR-040: 'The take surface renders attempt_questions (the Question's prompt +
-    the learner's response field/value), which this task does not touch — the test
-    suite lives on the questions row (the Question dataclass — ADR-041), not on the
-    AttemptQuestion.'
+    ADR-040 deferred the 'show the test suite on the take page or not?' decision
+    to the in-app-runner slice. ADR-043 is that slice and decided: show it read-only.
+    The prompt assertion (prompt must appear) remains valid. The former 'must NOT
+    appear' assertion for test_suite is inverted: the test_suite content MUST appear
+    in a .quiz-take-test-suite block on the in_progress take page.
 
-    Trace: AC-8; ADR-040 §Take surface (unchanged); ADR-038; ADR-039.
+    Trace: AC-8; ADR-040 §Take surface (deferred decision);
+           ADR-043 §quiz_take.html.j2 changes (decided: show test_suite read-only);
+           ADR-038; ADR-039.
     """
-    db_path = str(tmp_path / "take_unchanged.db")
+    db_path = str(tmp_path / "take_renders_test_suite.db")
     client = _bootstrap_and_make_client(monkeypatch, db_path)
 
     # Create and walk a Quiz to ready
@@ -1368,7 +1375,7 @@ def test_take_surface_unchanged(tmp_path, monkeypatch) -> None:
     unique_prompt = "Implement two_sum(nums, target) in C++ — unique marker XYZ789."
     unique_test_suite = (
         "void test_two_sum_XYZ789() {\n"
-        "    // This test suite string must NOT appear on the take page\n"
+        "    // This test suite string MUST appear on the take page (ADR-043)\n"
         "    auto result = two_sum({2, 7, 11, 15}, 9);\n"
         "    assert(result == std::vector<int>({0, 1}));\n"
         "}\n"
@@ -1405,13 +1412,14 @@ def test_take_surface_unchanged(tmp_path, monkeypatch) -> None:
         "AC-8: the take page must render attempt_questions (the prompt)."
     )
 
-    # The Question's test_suite must NOT appear on the take page (ADR-040)
-    assert "test_two_sum_XYZ789" not in html, (
-        f"The take page renders the Question's test_suite content "
-        "('test_two_sum_XYZ789' found in HTML). "
-        "AC-8/ADR-040 §Take surface (unchanged): TASK-016 does NOT add test_suite "
-        "display to the take surface. That is the in-app-runner slice's decision. "
-        "The take surface must be unchanged from ADR-038."
+    # The Question's test_suite MUST appear on the take page (ADR-043)
+    assert "test_two_sum_XYZ789" in html, (
+        f"The take page does not render the Question's test_suite content "
+        "('test_two_sum_XYZ789' not found in HTML). "
+        "ADR-043 §quiz_take.html.j2 changes: the in_progress take page must render "
+        "a read-only <pre class='quiz-take-test-suite'>{{ aq.test_suite }}</pre> "
+        "block per Question. ADR-040 deferred this decision to the runner slice; "
+        "ADR-043 resolved it: show the test suite read-only."
     )
 
 

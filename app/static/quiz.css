@@ -137,3 +137,106 @@ pre.quiz-take-response {
 .quiz-take-back-link a:hover {
   text-decoration: underline;
 }
+
+/* ---------------------------------------------------------------------------
+   TASK-017 / ADR-043 additions — quiz-take-* namespace per ADR-008
+   --------------------------------------------------------------------------- */
+
+/* ADR-031's no-relocate recipe: the PRG #question-{id} anchor lands the learner
+   on the Question they ran — not at the page top. */
+.quiz-take-question {
+  scroll-margin-top: 80px;
+}
+
+/* ---- Read-only test-suite block (the spec — shown to the learner per ADR-043) ---- */
+pre.quiz-take-test-suite {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: #eef3ee;
+  border: 1px solid #b8ccb8;
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre;
+  word-break: normal;
+}
+
+/* ---- "Run tests" button (secondary/outline variant — lighter than Submit Quiz) ---- */
+.quiz-take-run-tests {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.875rem;
+  padding: 0.35em 1em;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid #3d6a6b;
+  background: transparent;
+  color: #3d6a6b;
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background 0.15s, color 0.15s;
+  margin-top: 0.5rem;
+  display: inline-block;
+}
+
+.quiz-take-run-tests:hover {
+  background: #3d6a6b;
+  color: #fff;
+}
+
+/* ---- Results panel ---- */
+.quiz-take-results {
+  margin-top: 0.75rem;
+  min-height: 0.5rem;
+}
+
+/* Pass state — greenish accent */
+.quiz-take-results-pass {
+  font-weight: bold;
+  color: #1e5c1e;
+  background: #e8f5e8;
+  border: 1px solid #9acc9a;
+  border-radius: 3px;
+  padding: 0.35rem 0.6rem;
+  display: inline-block;
+  margin-bottom: 0.4rem;
+}
+
+/* Fail state — amber/red accent */
+.quiz-take-results-fail {
+  font-weight: bold;
+  color: #7a2a00;
+  background: #fff0e8;
+  border: 1px solid #e0a080;
+  border-radius: 3px;
+  padding: 0.35rem 0.6rem;
+  display: inline-block;
+  margin-bottom: 0.4rem;
+}
+
+/* Honest failure-status line (timed_out / compile_error / setup_error):
+   neutral — "couldn't run", not "you failed" */
+.quiz-take-results-status {
+  font-style: italic;
+  color: #5a5a5a;
+  font-size: 0.88rem;
+  margin-bottom: 0.4rem;
+}
+
+/* Run output / compiler diagnostic — monospace, scrollable */
+pre.quiz-take-results-output {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  background: #f5f5f5;
+  border: 1px solid #d4cbba;
+  border-radius: 3px;
+  padding: 0.4rem 0.6rem;
+  margin: 0;
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

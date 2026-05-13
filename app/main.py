@@ -53,7 +53,11 @@ from app.persistence import (
     list_attempt_questions,
     save_attempt_responses,
     submit_attempt,
+    # ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017)
+    get_question,
+    save_attempt_test_result,
 )
+from app.sandbox import run_test_suite
 
 # ---- Jinja2 environment ----
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
@@ -834,3 +838,181 @@ async def submit_quiz_attempt(
         f"/quiz/{quiz_id}/take"
     )
     return RedirectResponse(url=take_url, status_code=303)
+
+
+@app.post(
+    "/lecture/{chapter_id}/sections/{section_number}/quiz/{quiz_id}/take/run-tests",
+)
+async def run_tests_route(
+    chapter_id: str,
+    section_number: str,
+    quiz_id: int,
+    request: Request,
+) -> RedirectResponse:
+    """
+    POST /lecture/{chapter_id}/sections/{section_number}/quiz/{quiz_id}/take/run-tests
+
+    ADR-043: The "Run tests" route.
+    Synchronous form-POST that submits the whole take form, saves all responses,
+    runs one Question's test suite via the sandbox (ADR-042), persists the result
+    (ADR-044), and PRG-redirects back to GET .../take#question-{question_id}.
+
+    Handler flow (ADR-043 §Handler flow):
+    1. Same path-parameter validation as ADR-038's take routes.
+    2. Resolve the latest in_progress Attempt (start_attempt reuse semantics).
+       - If no in_progress Attempt (submitted / no Attempt), redirect to GET .../take
+         (running tests is an in_progress-only action — no sandbox invoked).
+    3. Parse form: {question_id: code} dict + target question_id.
+    4. save_attempt_responses — persist ALL textareas before the sandbox call.
+    5. Fetch the target Question's test_suite via get_question.
+       - If question_id not in the Attempt / Quiz → ignore (no sandbox, redirect).
+       - If Question has no test_suite → setup_error (surfaced honestly, persisted).
+    6. run_test_suite(test_suite, learner_code) → RunResult (ADR-042).
+    7. save_attempt_test_result → persist the result (ADR-044).
+    8. 303 See Other → GET .../take#question-{question_id}.
+
+    MC-1: no LLM SDK, no ai-workflows call.
+    MC-4: running tests is not AI work — synchronous, not out-of-band (ADR-042).
+    MC-5 spirit: a sandbox failure is persisted and rendered honestly.
+    MC-6: never writes under content/latex/; sandbox runs in temp dir (ADR-042).
+    MC-7: no user_id, no auth, no session.
+    MC-9: does NOT generate a Quiz.
+    MC-10: no sqlite3, no SQL literals — only typed persistence functions.
+
+    Returns:
+      303 — PRG redirect to GET .../take#question-{question_id}
+      404 — unknown chapter_id / section_number / quiz_id / wrong-section quiz
+      422 — malformed chapter_id
+    """
+    # --- Same path-parameter validation as ADR-038's take routes ---
+    try:
+        designation = chapter_designation(chapter_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid chapter_id {chapter_id!r}: {exc}",
+        )
+
+    root = _get_content_root()
+    tex_path = root / f"{chapter_id}.tex"
+    if not tex_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter source file not found: {tex_path.name}",
+        )
+
+    latex_text = tex_path.read_text(encoding="utf-8")
+    try:
+        sections = extract_sections(chapter_id, latex_text)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Section ID derivation failed for {chapter_id!r}: {exc}",
+        )
+
+    section_id = f"{chapter_id}#section-{section_number}"
+    known_section_ids = {s["id"] for s in sections}
+    if section_id not in known_section_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section not found: {section_id!r} in chapter {chapter_id!r}",
+        )
+
+    quiz = get_quiz(quiz_id)
+    if quiz is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quiz {quiz_id!r} not found.",
+        )
+    if quiz.section_id != section_id:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Quiz {quiz_id!r} belongs to section {quiz.section_id!r}, "
+                f"not to {section_id!r}."
+            ),
+        )
+
+    # Non-ready Quiz: running tests is only valid for a ready Quiz
+    if quiz.status != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Quiz {quiz_id!r} is not ready (status={quiz.status!r}). "
+                   "Tests can only be run while the Quiz is takeable.",
+        )
+
+    # --- Parse form body ---
+    form = await request.form()
+    responses: dict[int, str] = {}
+    for key, value in form.items():
+        if key.startswith("response_"):
+            try:
+                qid = int(key[len("response_"):])
+                responses[qid] = str(value)
+            except (ValueError, IndexError):
+                pass
+
+    target_question_id_str = form.get("question_id", "")
+    try:
+        target_question_id = int(str(target_question_id_str))
+    except (ValueError, TypeError):
+        target_question_id = None
+
+    # --- Resolve the latest in_progress Attempt ---
+    # start_attempt uses reuse-the-latest-in_progress semantics (ADR-039).
+    attempt = start_attempt(quiz_id)
+
+    # Running tests is an in_progress-only action (ADR-043)
+    take_url_base = (
+        f"/lecture/{chapter_id}"
+        f"/sections/{section_number}"
+        f"/quiz/{quiz_id}/take"
+    )
+    if attempt.status != "in_progress":
+        return RedirectResponse(url=take_url_base, status_code=303)
+
+    # --- Step 4: save ALL responses before the sandbox call ---
+    save_attempt_responses(attempt.attempt_id, responses)
+
+    # --- Steps 5-7: fetch test_suite, run sandbox, persist result ---
+    # If target_question_id is None or not in the Attempt's rows, ignore gracefully.
+    if target_question_id is not None:
+        # Verify the question belongs to this Attempt (defensive — matches ADR-043 §ignore posture)
+        aq_list = list_attempt_questions(attempt.attempt_id)
+        aq_ids = {aq.question_id for aq in aq_list}
+
+        if target_question_id in aq_ids:
+            question = get_question(target_question_id)
+            if question is not None:
+                test_suite = question.test_suite
+                learner_code = responses.get(target_question_id, "")
+
+                if test_suite:
+                    result = run_test_suite(test_suite, learner_code)
+                else:
+                    # No test suite — surface honestly as setup_error (ADR-043 §Handler flow)
+                    from app.sandbox import RunResult  # noqa: PLC0415
+                    result = RunResult(
+                        status="setup_error",
+                        passed=None,
+                        output="This Question has no test suite.",
+                    )
+
+                save_attempt_test_result(
+                    attempt.attempt_id,
+                    target_question_id,
+                    passed=result.passed,
+                    status=result.status,
+                    output=result.output,
+                )
+
+    # --- Step 8: PRG redirect to GET .../take#question-{question_id} ---
+    # ADR-043 §PRG redirect + ADR-031's no-relocate recipe:
+    # The take-page's per-Question block carries id="question-{question_id}";
+    # the CSS gives .quiz-take-question a generous scroll-margin-top.
+    if target_question_id is not None:
+        redirect_url = f"{take_url_base}#question-{target_question_id}"
+    else:
+        redirect_url = take_url_base
+
+    return RedirectResponse(url=redirect_url, status_code=303)

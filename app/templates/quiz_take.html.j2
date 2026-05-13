@@ -22,18 +22,43 @@
   {% elif attempt and attempt.status == 'submitted' %}
   {# ADR-038 §submitted state: 'Submitted — grading not yet available.'
      Prompts + read-only responses shown; no editable form; no fabricated Grade.
-     MC-5: is_correct/explanation stay NULL; nothing is rendered in their place. #}
+     MC-5: is_correct/explanation stay NULL; nothing is rendered in their place.
+     ADR-043 §submitted branch: each Question additionally shows its last test
+     result read-only (the honest §8 record — "the in-app test results for each
+     response"). No Run tests button after submit. #}
   <div class="quiz-take-submitted">
     <p class="quiz-take-submitted-status">Submitted — grading not yet available.</p>
     {% for aq in attempt_questions %}
-    <div class="quiz-take-question">
+    <div class="quiz-take-question" id="question-{{ aq.question_id }}">
       <div class="quiz-take-prompt">
         <strong>Question {{ loop.index }}:</strong>
         {{ aq.prompt }}
       </div>
+      {% if aq.test_suite %}
+      <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre>
+      {% endif %}
       <div class="quiz-take-response-readonly">
         <label>Your submitted answer:</label>
         <pre class="quiz-take-response quiz-take-response-readonly">{{ aq.response if aq.response is not none else '(no response submitted)' }}</pre>
+      </div>
+      {# ADR-043 §submitted branch: last test result read-only (no Run tests button) #}
+      <div class="quiz-take-results">
+        {% if aq.test_run_at is not none %}
+          {% if aq.test_status == 'ran' and aq.test_passed %}
+          <div class="quiz-take-results-pass">Tests passed.</div>
+          {% elif aq.test_status == 'ran' and not aq.test_passed %}
+          <div class="quiz-take-results-fail">Tests failed.</div>
+          {% elif aq.test_status == 'timed_out' %}
+          <div class="quiz-take-results-status">The test run timed out.</div>
+          {% elif aq.test_status == 'compile_error' %}
+          <div class="quiz-take-results-status">The test suite failed to compile.</div>
+          {% elif aq.test_status == 'setup_error' %}
+          <div class="quiz-take-results-status">Could not run the tests: {{ aq.test_output }}</div>
+          {% endif %}
+          {% if aq.test_output and aq.test_status != 'setup_error' %}
+          <pre class="quiz-take-results-output">{{ aq.test_output }}</pre>
+          {% endif %}
+        {% endif %}
       </div>
     </div>
     {% endfor %}
@@ -41,16 +66,26 @@
 
   {% else %}
   {# ADR-038 §in_progress state: takeable form with a code-entry textarea per Question.
+     ADR-043 §in_progress additions per Question:
+       - id="question-{question_id}" on the block (the PRG anchor target)
+       - pre.quiz-take-test-suite (read-only test suite — the spec, autoescaped)
+       - button.quiz-take-run-tests with formaction='.../take/run-tests' and name='question_id'
+       - div.quiz-take-results (results panel — empty/"not run" before a run)
      Manifest §5/§7: every Question is a hands-on coding task; the learner writes code.
-     NO option radios, no true/false toggles, no non-code inputs. #}
+     NO option radios, no true/false toggles, no non-code inputs.
+     ADR-043 §No JavaScript: no JS assets; the form POST + PRG is the chosen shape. #}
   <form class="quiz-take-form" method="post"
         action="/lecture/{{ chapter_id }}/sections/{{ section_number }}/quiz/{{ quiz.quiz_id }}/take">
     {% for aq in attempt_questions %}
-    <div class="quiz-take-question">
+    <div class="quiz-take-question" id="question-{{ aq.question_id }}">
       <div class="quiz-take-prompt">
         <strong>Question {{ loop.index }}:</strong>
         {{ aq.prompt }}
       </div>
+      {# ADR-043 §quiz_take.html.j2: read-only test-suite block (autoescaped — correct). #}
+      {% if aq.test_suite %}
+      <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre>
+      {% endif %}
       {# ADR-038: code-entry textarea — monospace, auto-grow (ADR-029 recipe).
          name='response_{question_id}' per ADR-038 §POST body.
          Manifest §5/§7: the learner writes code here — never picks options. #}
@@ -58,6 +93,34 @@
                 name="response_{{ aq.question_id }}"
                 rows="6"
                 placeholder="Write your code here…">{{ aq.response if aq.response is not none else '' }}</textarea>
+      {# ADR-043 §Run tests affordance: button inside the take <form>, formaction overrides
+         the form's action to post to run-tests; name/value carry the target question_id.
+         Plain HTML — no JavaScript (formaction + name/value on button[type=submit]). #}
+      <button type="submit"
+              formaction="/lecture/{{ chapter_id }}/sections/{{ section_number }}/quiz/{{ quiz.quiz_id }}/take/run-tests"
+              name="question_id"
+              value="{{ aq.question_id }}"
+              class="quiz-take-run-tests">Run tests</button>
+      {# ADR-043 §Results panel: rendered from ADR-044's AttemptQuestion test_* fields.
+         Empty/"not run" when test_run_at is NULL.  Honest statuses for failure modes. #}
+      <div class="quiz-take-results">
+        {% if aq.test_run_at is not none %}
+          {% if aq.test_status == 'ran' and aq.test_passed %}
+          <div class="quiz-take-results-pass">Tests passed.</div>
+          {% elif aq.test_status == 'ran' and not aq.test_passed %}
+          <div class="quiz-take-results-fail">Tests failed.</div>
+          {% elif aq.test_status == 'timed_out' %}
+          <div class="quiz-take-results-status">The test run timed out.</div>
+          {% elif aq.test_status == 'compile_error' %}
+          <div class="quiz-take-results-status">The test suite failed to compile.</div>
+          {% elif aq.test_status == 'setup_error' %}
+          <div class="quiz-take-results-status">Could not run the tests: {{ aq.test_output }}</div>
+          {% endif %}
+          {% if aq.test_output and aq.test_status != 'setup_error' %}
+          <pre class="quiz-take-results-output">{{ aq.test_output }}</pre>
+          {% endif %}
+        {% endif %}
+      </div>
     </div>
     {% endfor %}
     <div class="quiz-take-submit">

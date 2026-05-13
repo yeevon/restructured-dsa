@@ -120,12 +120,18 @@ CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_id ON quiz_attempts (quiz_id);
 
 -- Per-Question state within an Attempt (MC-8: wrong-answer-replay history).
 -- is_correct and explanation are NULL until graded.
+-- test_* columns (ADR-044): four nullable columns for the latest test-run result;
+--   NULL until a run happens; set by save_attempt_test_result (TASK-017).
 CREATE TABLE IF NOT EXISTS attempt_questions (
     attempt_id  INTEGER NOT NULL REFERENCES quiz_attempts (attempt_id),
     question_id INTEGER NOT NULL REFERENCES questions (question_id),
     response    TEXT,
     is_correct  INTEGER,
     explanation TEXT,
+    test_passed INTEGER,
+    test_status TEXT,
+    test_output TEXT,
+    test_run_at TEXT,
     PRIMARY KEY (attempt_id, question_id)
 );
 CREATE INDEX IF NOT EXISTS idx_attempt_questions_question_id ON attempt_questions (question_id);
@@ -166,6 +172,25 @@ def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
     questions_cols = {row[1] for row in cur.fetchall()}
     if "test_suite" not in questions_cols:
         conn.execute("ALTER TABLE questions ADD COLUMN test_suite TEXT")
+        conn.commit()
+
+    # --- attempt_questions test-result columns (ADR-044 §The column shape) ---
+    # Four nullable columns for the latest test-run result.  NULL until a run
+    # happens; set by save_attempt_test_result (TASK-017 / ADR-044).
+    # Mirrors ADR-037's generation_error and ADR-041's test_suite precedents.
+    cur = conn.execute("PRAGMA table_info(attempt_questions)")
+    aq_cols = {row[1] for row in cur.fetchall()}
+    if "test_passed" not in aq_cols:
+        conn.execute("ALTER TABLE attempt_questions ADD COLUMN test_passed INTEGER")
+        conn.commit()
+    if "test_status" not in aq_cols:
+        conn.execute("ALTER TABLE attempt_questions ADD COLUMN test_status TEXT")
+        conn.commit()
+    if "test_output" not in aq_cols:
+        conn.execute("ALTER TABLE attempt_questions ADD COLUMN test_output TEXT")
+        conn.commit()
+    if "test_run_at" not in aq_cols:
+        conn.execute("ALTER TABLE attempt_questions ADD COLUMN test_run_at TEXT")
         conn.commit()
 
 

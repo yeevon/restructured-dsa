@@ -457,14 +457,22 @@ class AttemptQuestion:
     One Question's state within an Attempt — a convenience join of
     attempt_questions + the Question's prompt + quiz_questions.position.
 
-    ADR-039 §The AttemptQuestion dataclass:
+    ADR-039 §The AttemptQuestion dataclass (extended by ADR-044):
       question_id  INTEGER  (FK → questions)
       prompt       TEXT     (the Question's coding-task prompt, from questions)
       response     TEXT | None  (the learner's code; NULL until submitted)
       position     INTEGER  (1-based order within the Quiz, from quiz_questions)
+      test_suite   str | None  (the Question's runnable test source — ADR-041/ADR-044;
+                               NULL for legacy rows predating TASK-016)
+
+    ADR-044 §The AttemptQuestion dataclass: four test-result fields added:
+      test_passed   bool | None  (True/False/None; None until first run or on failure)
+      test_status   str | None   ('ran'|'timed_out'|'compile_error'|'setup_error'; None until run)
+      test_output   str | None   (combined output / diagnostic; None until run)
+      test_run_at   str | None   (ISO-8601 UTC timestamp of latest run; None until run)
 
     The take template iterates these in position order to render each
-    Question's prompt + a code field.
+    Question's prompt + a code field + test suite + results panel.
     No is_correct / explanation this slice (NULL until grading — ADR-039).
     No user_id (MC-7).
     """
@@ -473,6 +481,11 @@ class AttemptQuestion:
     prompt: str
     response: str | None
     position: int
+    test_suite: str | None = None
+    test_passed: bool | None = None
+    test_status: str | None = None
+    test_output: str | None = None
+    test_run_at: str | None = None
 
 
 def _row_to_quiz_attempt(row: object) -> QuizAttempt:
@@ -488,12 +501,28 @@ def _row_to_quiz_attempt(row: object) -> QuizAttempt:
 
 
 def _row_to_attempt_question(row: object) -> AttemptQuestion:
-    """Convert a sqlite3.Row to an AttemptQuestion dataclass."""
+    """Convert a sqlite3.Row to an AttemptQuestion dataclass.
+
+    ADR-044 §AttemptQuestion: carries test_suite + four test_* fields through.
+    test_passed: INTEGER 1/0/NULL → bool True/False/None (sqlite3 maps int→int;
+    we convert explicitly to bool|None).
+    """
+    raw_passed = row["test_passed"]
+    if raw_passed is None:
+        test_passed = None
+    else:
+        test_passed = bool(raw_passed)
+
     return AttemptQuestion(
         question_id=row["question_id"],
         prompt=row["prompt"],
         response=row["response"],
         position=row["position"],
+        test_suite=row["test_suite"],
+        test_passed=test_passed,
+        test_status=row["test_status"],
+        test_output=row["test_output"],
+        test_run_at=row["test_run_at"],
     )
 
 
@@ -645,13 +674,16 @@ def list_attempt_questions(attempt_id: int) -> list[AttemptQuestion]:
     quiz_questions.position, ordered by position.
 
     ADR-039 §list_attempt_questions: this is what the take template iterates.
+    ADR-044: also SELECTs q.test_suite + the four aq.test_* columns so the
+    take template can show the read-only test-suite block and results panel.
     Returns [] for an unknown attempt_id or an Attempt with no rows.
     SQL stays here (MC-10).
     """
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT aq.question_id, q.prompt, aq.response, qq.position "
+            "SELECT aq.question_id, q.prompt, aq.response, qq.position, "
+            "q.test_suite, aq.test_passed, aq.test_status, aq.test_output, aq.test_run_at "
             "FROM attempt_questions aq "
             "JOIN questions q ON aq.question_id = q.question_id "
             "JOIN quiz_questions qq ON aq.question_id = qq.question_id "
@@ -715,6 +747,84 @@ def submit_attempt(attempt_id: int) -> None:
             "UPDATE quiz_attempts SET status = 'submitted', submitted_at = ? "
             "WHERE attempt_id = ?",
             (now, attempt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Public API — TASK-017 additions (ADR-042 / ADR-043 / ADR-044)
+# ---------------------------------------------------------------------------
+
+
+def get_question(question_id: int) -> "Question | None":
+    """
+    Return a single Question by question_id, or None if not found.
+
+    ADR-044 §The runner-slice accessor: the "Run tests" route (ADR-043) calls
+    this to fetch the target Question's test_suite to feed the sandbox
+    (ADR-042).  The whole Question is returned (not a narrower accessor) because
+    the Question dataclass already exists with the right shape and the grading
+    slice will also want a Question by id — ADR-041 §No new accessor:
+    "the runner slice adds one."
+
+    SELECT question_id, section_id, prompt, topics, test_suite, created_at
+    FROM questions WHERE question_id = ?
+
+    Returns None for an unknown question_id.
+    SQL stays here (MC-10).  No user_id (MC-7).
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT question_id, section_id, prompt, topics, test_suite, created_at "
+            "FROM questions WHERE question_id = ?",
+            (question_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return _row_to_question(row) if row is not None else None
+
+
+def save_attempt_test_result(
+    attempt_id: int,
+    question_id: int,
+    *,
+    passed: "bool | None",
+    status: str,
+    output: str,
+    run_at: "str | None" = None,
+) -> None:
+    """
+    Write the test-run result for one Question in an Attempt.
+
+    ADR-044 §The writer:
+    UPDATE attempt_questions SET test_passed=?, test_status=?, test_output=?,
+    test_run_at=? WHERE attempt_id=? AND question_id=?
+
+    A (attempt_id, question_id) pair with no matching row is a silent no-op
+    (defensive — mirrors save_attempt_responses's ignore-unknown-question_id
+    posture; the route built the call from the Attempt's own rows).
+
+    Does NOT touch response, is_correct, explanation, or quiz_attempts.status —
+    running tests is a within-in_progress action (ADR-043 / ADR-044).
+
+    passed:  Python True/False/None → SQLite INTEGER 1/0/NULL
+             (sqlite3 converts bool→int natively; None → NULL natively)
+    run_at:  when None, filled by _utc_now_iso() (same pattern as start_attempt)
+
+    SQL stays here (MC-10).  No user_id (MC-7).
+    """
+    now = run_at if run_at is not None else _utc_now_iso()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE attempt_questions "
+            "SET test_passed = ?, test_status = ?, test_output = ?, test_run_at = ? "
+            "WHERE attempt_id = ? AND question_id = ?",
+            (passed, status, output, now, attempt_id, question_id),
         )
         conn.commit()
     finally:
