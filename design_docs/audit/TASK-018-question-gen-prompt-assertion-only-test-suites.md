@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-018-question-gen-prompt-assertion-only-test-suites.md`
 **Started:** 2026-05-13T00:00:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed
+**Current phase:** committed
 
 ---
 
@@ -19,6 +19,7 @@
 | 2026-05-13T00:00:00Z | Tests reviewed | auto-accepted | /auto run — test-writer authored tests for AC-1..AC-11 (42 tests in tests/test_task018_preamble.py + 3 Playwright tests); 28 failing as expected; 917 prior tests still pass |
 | 2026-05-13T00:00:00Z | rendered-surface verification (TASK-018 quiz-take preamble block) | pending human | /auto Phase 5 — visual check post-commit; review `tests/playwright/artifacts/` last-run screenshots of `quiz_take` pages; confirm `.quiz-take-preamble` block is legible / monospace / visually distinct from `.quiz-take-test-suite` and the response textarea; confirm it omits cleanly when empty |
 | 2026-05-13T00:00:00Z | assertion-only test-suite end-to-end sanity (TASK-018) | pending human | /auto Phase 5 — post-commit, trigger a fresh Quiz generation on a real Section, run `python -m app.workflows.process_quiz_requests`, open the regenerated Quiz's take page, write a correct implementation, click "Run tests", confirm `passed=True`; confirm `content/latex/` byte-unchanged afterwards |
+| 2026-05-13T00:00:00Z | Commit review | auto-accepted | /auto run — reviewer APPROVE / READY TO COMMIT; commit 4729e5c |
 
 ---
 
