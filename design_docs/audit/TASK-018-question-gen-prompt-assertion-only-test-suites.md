@@ -17,8 +17,8 @@
 | 2026-05-13T00:00:00Z | ADR-047 reviewed | auto-accepted | /auto run |
 | 2026-05-13T00:00:00Z | /design output gate | pass | auto-satisfied at /auto Phase 2 (ADR-045/046/047 accepted; architecture.md updated; project_issue moved to Resolved/) |
 | 2026-05-13T00:00:00Z | Tests reviewed | auto-accepted | /auto run — test-writer authored tests for AC-1..AC-11 (42 tests in tests/test_task018_preamble.py + 3 Playwright tests); 28 failing as expected; 917 prior tests still pass |
-| 2026-05-13T00:00:00Z | rendered-surface verification (TASK-018 quiz-take preamble block) | pending human | /auto Phase 5 — visual check post-commit; review `tests/playwright/artifacts/` last-run screenshots of `quiz_take` pages; confirm `.quiz-take-preamble` block is legible / monospace / visually distinct from `.quiz-take-test-suite` and the response textarea; confirm it omits cleanly when empty |
-| 2026-05-13T00:00:00Z | assertion-only test-suite end-to-end sanity (TASK-018) | pending human | /auto Phase 5 — post-commit, trigger a fresh Quiz generation on a real Section, run `python -m app.workflows.process_quiz_requests`, open the regenerated Quiz's take page, write a correct implementation, click "Run tests", confirm `passed=True`; confirm `content/latex/` byte-unchanged afterwards |
+| 2026-05-13T00:00:00Z | rendered-surface verification (TASK-018 quiz-take preamble block) | pass | Human verified post-commit on the regenerated Quiz's take page: `.quiz-take-preamble` block legible, monospace, visually distinct from `.quiz-take-test-suite` and the response textarea; rendered when present; omitted cleanly when empty. |
+| 2026-05-13T00:00:00Z | assertion-only test-suite end-to-end sanity (TASK-018) | pass | Human ran the gate post-commit on a regenerated Quiz Question (`Point2D` C++ task). Splice mechanism works: a partial / wrong implementation surfaces real test errors (not a universal `compile_error`); a correct implementation produces `Tests passed. All Point2D O(1) tests passed!` — the pass-path TASK-017 could not reach. **Editorial finding (non-blocking, see Run 009 adjacent finding):** the LLM's `prompt` text still asks the learner to "implement Point2D" even though the struct shape is provided in the `preamble` — the assertion-only-suite mechanism is correct, but the LLM's prompt-text discipline isn't quite there. Tracked as a follow-up. |
 | 2026-05-13T00:00:00Z | Commit review | auto-accepted | /auto run — reviewer APPROVE / READY TO COMMIT; commit 4729e5c |
 
 ---
@@ -553,3 +553,40 @@ Result: **all positive design commitments satisfied; no unauthorized public surf
 **Final result:** READY TO COMMIT.
 
 **Output summary:** 0 blockers. Two non-blocking observations recorded. All 13 programmatic ACs verified from the staged diff. The two `pending human` Verification gates remain pending the human's post-commit eyeball-check, per the user's standing memory rule.
+
+---
+
+### Run 009 — human verification post-commit (assertion-only end-to-end gate)
+
+**Time:** 2026-05-13T00:00:00Z
+**Gate:** `assertion-only test-suite end-to-end sanity (TASK-018)` — flipped `pending human` → `pass`.
+
+**Procedure:** human triggered a fresh Quiz generation on a real Section (via the existing per-Section "Generate a Quiz" button), ran `python -m app.workflows.process_quiz_requests`, opened the regenerated Quiz's take page, and exercised the runner.
+
+**Result:**
+- A regenerated Question's structure was the expected three-piece form: prompt + preamble + assertion-only test_suite. The `preamble` carried the `Point2D` struct definition; the `test_suite` carried assertions that reference `Point2D` and `update_and_calculate_distance_squared` without redefining either.
+- A partially-implemented function → real test errors surfaced (not a universal `compile_error`). The runner ran the tests against the learner's code; the splice (`preamble + response + test_suite`) compiled and executed.
+- A correctly-implemented function (`p.x = new_x; p.y = new_y; distance_squared = p.x*p.x + p.y*p.y;`) → `Tests passed. All Point2D O(1) tests passed!` (`passed=True` on the `.quiz-take-results-pass` block).
+- This is the **pass-path TASK-017's parked human gate could not reach.** The runner pipeline is now end-to-end-green on a real generated Question.
+
+**Adjacent finding (non-blocking; editorial / LLM-prompt-quality):**
+- The LLM's generated `prompt` text still includes "implement Point2D" framing even though the `Point2D` struct is fully defined in the `preamble`. The assertion-only-suite + preamble mechanism is correct (the learner's actual task — implementing the function — was discoverable and testable), but the prompt-text wording redundantly asks the learner to implement a struct that's already given. This is the prompt-engineering risk TASK-018's "Architectural concerns #1" anticipated ("An LLM prompt is not a contract; the re-run is the verification. The architect should expect that /design may need to iterate the prompt wording once.").
+- Cause: STRICT REQUIREMENT 6 instructs the LLM to "NAME the exact function/class signature in the prompt", and STRICT REQUIREMENT 8 instructs the LLM to put shared struct/class shapes in `preamble`. The two are silent on what to do when the function-being-implemented takes a struct that's defined in the preamble — the LLM resolves the silence by restating "implement Point2D" in the prompt. A follow-up edit to `_question_gen_prompt_fn` should add a STRICT REQUIREMENT 9 (or extend 6 / 8) instructing: "When the function-to-implement takes a type defined in `preamble`, the `prompt` MUST describe the function-to-implement only, never instructing the learner to define the type — the type is given."
+- **Disposition:** **NOT a blocker for TASK-018.** The structural mechanism works; the learner can still complete the task; the runner verdict is honest. To be filed as a small follow-up project_issue / TASK after user direction.
+
+**No code change in this run.** Audit-only update reflecting gate-pass + adjacent finding.
+
+**Output summary:** Verification Gate 2 (`assertion-only end-to-end sanity`) — PASS. One adjacent editorial finding recorded for follow-up. Verification Gate 1 (`rendered-surface verification`) still `pending human`.
+
+---
+
+### Run 010 — human verification post-commit (rendered-surface gate) + project_issue filed for adjacent finding
+
+**Time:** 2026-05-13T00:00:00Z
+**Gate:** `rendered-surface verification (TASK-018 quiz-take preamble block)` — flipped `pending human` → `pass`.
+
+**Result:** Human verified post-commit on the regenerated Quiz's take page: `.quiz-take-preamble` block is legible, monospace, visually distinct from `.quiz-take-test-suite` and the response textarea; rendered when the Question carries a non-empty `preamble`; omitted cleanly when empty.
+
+**Project_issue filed** for the Run 009 adjacent finding (prompt-text redundancy with preamble): `design_docs/project_issues/question-gen-prompt-text-redundant-with-preamble.md` (Status: Open; priority: low / editorial; forecast resolution: one-line STRICT REQUIREMENT 9 on `_question_gen_prompt_fn`; no new ADR forecast — within ADR-045's positive commitments).
+
+**Both Verification gates now PASS.** TASK-018 fully verified post-commit.
