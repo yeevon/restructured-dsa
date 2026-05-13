@@ -2,8 +2,8 @@
 
 **Task file:** `design_docs/tasks/TASK-016-questions-carry-a-test-suite.md`
 **Started:** 2026-05-12T00:00:00Z
-**Status:** Reviewed
-**Current phase:** review
+**Status:** Committed
+**Current phase:** review (complete)
 
 ---
 
@@ -18,6 +18,7 @@
 | 2026-05-12T21:20:00Z | Tests reviewed | auto-accepted | /auto run (resumed) |
 | 2026-05-12T23:40:00Z | rendered-surface verification (TASK-016 per-Section Quiz caption) | N/A (no surface change) | ADR-040 decided the `.section-quiz` `ready`-entry caption and the take page are unchanged; no rendered-surface review needed. Playwright DOM regression suite green (1060 passed / 8 skipped). |
 | 2026-05-12T23:40:00Z | ai-workflows generation sanity (with test suites) (TASK-016) | pending human | /auto run — post-commit visual check: human runs `python -m app.workflows.process_quiz_requests` against a real `requested` Quiz on a real Section (real provider call — the stubbed seam can't cross the `aiw run` subprocess), confirms each Question carries `prompt` + `topics` + a plausible runnable `test_suite`, the persisted `questions` rows carry the test suite, and a Quiz where the LLM fails to produce a usable test suite ends `generation_failed` (not shipped with a placeholder). Supersedes / re-exercises the still-`pending human` `ai-workflows generation sanity` row in the TASK-014 audit (the `question_gen` output schema changed). Edit `pending human` → `pass` (or `fail`) here post-commit. |
+| 2026-05-12T23:50:00Z | Commit review | auto-accepted | /auto run — reviewer Run 008 returned READY TO COMMIT (0 conformance blockers, 0 architecture leaks, 2 non-blocking notes); committed as `b936b3e` (`feat(quiz): TASK-016 — Questions carry a test suite (workflow emits it, Bank persists it)`). This audit-header close is the follow-up `chore(audit)` commit. |
 
 ---
 
