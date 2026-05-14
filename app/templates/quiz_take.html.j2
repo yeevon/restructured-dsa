@@ -73,6 +73,146 @@
     {% endfor %}
   </div>
 
+  {% elif attempt and attempt.status == 'graded' %}
+  {# ADR-051 §Graded-state rendering: aggregate score block + per-Question
+     correctness indicator + LLM explanation block.
+     NO submit form, NO Run tests button.
+     MC-5: is_correct is derived from test_passed by the grading processor,
+     never from a fabricated LLM verdict. #}
+  <section class="quiz-take-grade">
+    <p class="quiz-take-grade-score">
+      Score: <strong>{{ grade.score }} / {{ attempt_questions | length }}</strong>
+    </p>
+    {% if grade.weak_topics %}
+    <div class="quiz-take-grade-weak-topics">
+      <strong>Weak topics:</strong>
+      <ul>
+        {% for topic in grade.weak_topics %}
+        <li>{{ topic }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if grade.recommended_sections %}
+    <div class="quiz-take-grade-recommended-sections">
+      <strong>Recommended sections for review:</strong>
+      <ul>
+        {% for sec in grade.recommended_sections %}
+        <li><a href="#{{ sec | replace('#', '') | replace('section-', 'section-') }}">{{ sec }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+  {% for aq in attempt_questions %}
+  <div class="quiz-take-question {% if aq.is_correct %}quiz-take-question-correct{% else %}quiz-take-question-incorrect{% endif %}" id="question-{{ aq.question_id }}">
+    <div class="quiz-take-prompt">
+      <strong>Question {{ loop.index }}:</strong>
+      {% if aq.is_correct %}
+      <span class="quiz-take-question-correct">Correct</span>
+      {% else %}
+      <span class="quiz-take-question-incorrect">Incorrect</span>
+      {% endif %}
+      {{ aq.prompt }}
+    </div>
+    {% if aq.preamble %}
+    <div class="quiz-take-preamble-wrapper">
+      <label class="quiz-take-preamble-label">Shared code — your implementation and the tests both depend on this:</label>
+      <pre class="quiz-take-preamble">{{ aq.preamble }}</pre>
+    </div>
+    {% endif %}
+    {% if aq.test_suite %}
+    <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre>
+    {% endif %}
+    <div class="quiz-take-response-readonly">
+      <label>Your submitted answer:</label>
+      <pre class="quiz-take-response quiz-take-response-readonly">{{ aq.response if aq.response is not none else '(no response submitted)' }}</pre>
+    </div>
+    <div class="quiz-take-results">
+      {% if aq.test_run_at is not none %}
+        {% if aq.test_status == 'ran' and aq.test_passed %}
+        <div class="quiz-take-results-pass">Tests passed.</div>
+        {% elif aq.test_status == 'ran' and not aq.test_passed %}
+        <div class="quiz-take-results-fail">Tests failed.</div>
+        {% elif aq.test_status == 'timed_out' %}
+        <div class="quiz-take-results-status">The test run timed out.</div>
+        {% elif aq.test_status == 'compile_error' %}
+        <div class="quiz-take-results-status">The test suite failed to compile.</div>
+        {% elif aq.test_status == 'setup_error' %}
+        <div class="quiz-take-results-status">Could not run the tests: {{ aq.test_output }}</div>
+        {% endif %}
+        {% if aq.test_output and aq.test_status != 'setup_error' %}
+        <pre class="quiz-take-results-output">{{ aq.test_output }}</pre>
+        {% endif %}
+      {% endif %}
+    </div>
+    {# ADR-051 §Graded-state: LLM explanation block per Question #}
+    {% if aq.explanation %}
+    <div class="quiz-take-explanation">
+      <strong>Explanation:</strong> {{ aq.explanation }}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% elif attempt and attempt.status == 'grading_failed' %}
+  {# ADR-051 §Grading-failed-state rendering: honest failure block.
+     MC-5: never render a fabricated Grade. Surface the failure visibly.
+     Per-Question read-only blocks shown unchanged (no explanation, no
+     correctness indicator). #}
+  <section class="quiz-take-grading-failed">
+    <p class="quiz-take-grading-failed-summary">
+      Grading was not completed successfully. Your submission was recorded,
+      but the automatic grading step encountered an error. Please try again later
+      or contact your instructor.
+    </p>
+    {% if attempt.grading_error %}
+    <details class="quiz-take-grading-failed-detail">
+      <summary>Error detail (for debugging)</summary>
+      <pre>{{ attempt.grading_error }}</pre>
+    </details>
+    {% endif %}
+  </section>
+  {% for aq in attempt_questions %}
+  <div class="quiz-take-question" id="question-{{ aq.question_id }}">
+    <div class="quiz-take-prompt">
+      <strong>Question {{ loop.index }}:</strong>
+      {{ aq.prompt }}
+    </div>
+    {% if aq.preamble %}
+    <div class="quiz-take-preamble-wrapper">
+      <label class="quiz-take-preamble-label">Shared code — your implementation and the tests both depend on this:</label>
+      <pre class="quiz-take-preamble">{{ aq.preamble }}</pre>
+    </div>
+    {% endif %}
+    {% if aq.test_suite %}
+    <pre class="quiz-take-test-suite">{{ aq.test_suite }}</pre>
+    {% endif %}
+    <div class="quiz-take-response-readonly">
+      <label>Your submitted answer:</label>
+      <pre class="quiz-take-response quiz-take-response-readonly">{{ aq.response if aq.response is not none else '(no response submitted)' }}</pre>
+    </div>
+    <div class="quiz-take-results">
+      {% if aq.test_run_at is not none %}
+        {% if aq.test_status == 'ran' and aq.test_passed %}
+        <div class="quiz-take-results-pass">Tests passed.</div>
+        {% elif aq.test_status == 'ran' and not aq.test_passed %}
+        <div class="quiz-take-results-fail">Tests failed.</div>
+        {% elif aq.test_status == 'timed_out' %}
+        <div class="quiz-take-results-status">The test run timed out.</div>
+        {% elif aq.test_status == 'compile_error' %}
+        <div class="quiz-take-results-status">The test suite failed to compile.</div>
+        {% elif aq.test_status == 'setup_error' %}
+        <div class="quiz-take-results-status">Could not run the tests: {{ aq.test_output }}</div>
+        {% endif %}
+        {% if aq.test_output and aq.test_status != 'setup_error' %}
+        <pre class="quiz-take-results-output">{{ aq.test_output }}</pre>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
   {% else %}
   {# ADR-038 §in_progress state: takeable form with a code-entry textarea per Question.
      ADR-043 §in_progress additions per Question:

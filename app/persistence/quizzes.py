@@ -437,19 +437,42 @@ def get_quiz(quiz_id: int) -> Quiz | None:
 
 
 @dataclass
+class Grade:
+    """
+    A single grades row — the aggregate Grade for a graded Attempt.
+
+    ADR-050 §Grade dataclass:
+      attempt_id            INTEGER PRIMARY KEY (FK → quiz_attempts)
+      score                 INTEGER NOT NULL  (SUM(is_correct) — runner-derived)
+      weak_topics           list[str]         (from '|'-delimited TEXT column)
+      recommended_sections  list[str]         (from '|'-delimited TEXT column)
+      graded_at             TEXT NOT NULL     (ISO-8601 UTC)
+
+    No user_id (MC-7). No is_correct override from LLM — score is always
+    the recomputed SUM from attempt_questions.is_correct (ADR-050).
+    """
+
+    attempt_id: int
+    score: int
+    weak_topics: list[str]
+    recommended_sections: list[str]
+    graded_at: str
+
+
+@dataclass
 class QuizAttempt:
     """
     A single quiz_attempts row (a Quiz Attempt, manifest §8).
 
-    ADR-039 §The QuizAttempt dataclass:
-      attempt_id   INTEGER PRIMARY KEY AUTOINCREMENT
-      quiz_id      INTEGER NOT NULL (FK → quizzes)
-      status       TEXT NOT NULL  ('in_progress' | 'submitted' | 'grading' |
-                                   'graded' | 'grading_failed' — ADR-033)
-      created_at   TEXT NOT NULL  (ISO-8601 UTC)
-      submitted_at TEXT nullable  (NULL until submitted)
-      graded_at    TEXT nullable  (NULL until graded — Grade aggregate ships
-                                   with the grading slice)
+    ADR-039 §The QuizAttempt dataclass (extended by ADR-050):
+      attempt_id    INTEGER PRIMARY KEY AUTOINCREMENT
+      quiz_id       INTEGER NOT NULL (FK → quizzes)
+      status        TEXT NOT NULL  ('in_progress' | 'submitted' | 'grading' |
+                                    'graded' | 'grading_failed' — ADR-033)
+      created_at    TEXT NOT NULL  (ISO-8601 UTC)
+      submitted_at  TEXT nullable  (NULL until submitted)
+      graded_at     TEXT nullable  (NULL until graded)
+      grading_error TEXT nullable  (NULL until grading_failed — ADR-050)
 
     No user_id (ADR-033 / MC-7 / manifest §5/§6 single-user).
     """
@@ -460,6 +483,7 @@ class QuizAttempt:
     created_at: str
     submitted_at: str | None
     graded_at: str | None
+    grading_error: str | None = None
 
 
 @dataclass
@@ -486,9 +510,13 @@ class AttemptQuestion:
       test_output   str | None   (combined output / diagnostic; None until run)
       test_run_at   str | None   (ISO-8601 UTC timestamp of latest run; None until run)
 
+    ADR-050 §AttemptQuestion extension: grading fields added:
+      is_correct    bool | None  (True/False/None; derived from test_passed by processor;
+                                  NULL until graded)
+      explanation   str | None   (LLM's per-Question explanation; NULL until graded)
+
     The take template iterates these in position order to render each
     Question's prompt + a code field + test suite + results panel.
-    No is_correct / explanation this slice (NULL until grading — ADR-039).
     No user_id (MC-7).
     """
 
@@ -502,10 +530,15 @@ class AttemptQuestion:
     test_status: str | None = None
     test_output: str | None = None
     test_run_at: str | None = None
+    is_correct: bool | None = None
+    explanation: str | None = None
 
 
 def _row_to_quiz_attempt(row: object) -> QuizAttempt:
-    """Convert a sqlite3.Row to a QuizAttempt dataclass."""
+    """Convert a sqlite3.Row to a QuizAttempt dataclass.
+
+    ADR-050: carries grading_error through from the nullable column.
+    """
     return QuizAttempt(
         attempt_id=row["attempt_id"],
         quiz_id=row["quiz_id"],
@@ -513,6 +546,7 @@ def _row_to_quiz_attempt(row: object) -> QuizAttempt:
         created_at=row["created_at"],
         submitted_at=row["submitted_at"],
         graded_at=row["graded_at"],
+        grading_error=row["grading_error"],
     )
 
 
@@ -521,14 +555,22 @@ def _row_to_attempt_question(row: object) -> AttemptQuestion:
 
     ADR-044 §AttemptQuestion: carries test_suite + four test_* fields through.
     ADR-046: also carries preamble through via the questions join.
+    ADR-050: carries is_correct and explanation through after grading.
     test_passed: INTEGER 1/0/NULL → bool True/False/None (sqlite3 maps int→int;
     we convert explicitly to bool|None).
+    is_correct: INTEGER 1/0/NULL → bool True/False/None (same conversion).
     """
     raw_passed = row["test_passed"]
     if raw_passed is None:
         test_passed = None
     else:
         test_passed = bool(raw_passed)
+
+    raw_is_correct = row["is_correct"]
+    if raw_is_correct is None:
+        is_correct = None
+    else:
+        is_correct = bool(raw_is_correct)
 
     return AttemptQuestion(
         question_id=row["question_id"],
@@ -541,6 +583,8 @@ def _row_to_attempt_question(row: object) -> AttemptQuestion:
         test_status=row["test_status"],
         test_output=row["test_output"],
         test_run_at=row["test_run_at"],
+        is_correct=is_correct,
+        explanation=row["explanation"],
     )
 
 
@@ -565,7 +609,7 @@ def start_attempt(quiz_id: int) -> QuizAttempt:
     try:
         # Check for an existing in_progress Attempt for this Quiz (ADR-039 §reuse)
         existing = conn.execute(
-            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at, grading_error "
             "FROM quiz_attempts "
             "WHERE quiz_id = ? AND status = 'in_progress' "
             "ORDER BY attempt_id DESC LIMIT 1",
@@ -603,7 +647,7 @@ def start_attempt(quiz_id: int) -> QuizAttempt:
 
         # Re-fetch the freshly-inserted row to return a clean dataclass
         row = conn.execute(
-            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at, grading_error "
             "FROM quiz_attempts WHERE attempt_id = ?",
             (attempt_id,),
         ).fetchone()
@@ -623,7 +667,7 @@ def get_attempt(attempt_id: int) -> QuizAttempt | None:
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at, grading_error "
             "FROM quiz_attempts WHERE attempt_id = ?",
             (attempt_id,),
         ).fetchone()
@@ -649,7 +693,7 @@ def get_latest_attempt_for_quiz(quiz_id: int) -> QuizAttempt | None:
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at "
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at, grading_error "
             "FROM quiz_attempts WHERE quiz_id = ? "
             "ORDER BY attempt_id DESC LIMIT 1",
             (quiz_id,),
@@ -701,7 +745,8 @@ def list_attempt_questions(attempt_id: int) -> list[AttemptQuestion]:
     try:
         rows = conn.execute(
             "SELECT aq.question_id, q.prompt, aq.response, qq.position, "
-            "q.test_suite, q.preamble, aq.test_passed, aq.test_status, aq.test_output, aq.test_run_at "
+            "q.test_suite, q.preamble, aq.test_passed, aq.test_status, aq.test_output, aq.test_run_at, "
+            "aq.is_correct, aq.explanation "
             "FROM attempt_questions aq "
             "JOIN questions q ON aq.question_id = q.question_id "
             "JOIN quiz_questions qq ON aq.question_id = qq.question_id "
@@ -872,3 +917,231 @@ def section_has_nonfailed_quiz(section_id: str) -> bool:
         conn.close()
 
     return row[0] > 0
+
+
+# ---------------------------------------------------------------------------
+# Public API — TASK-019 additions (ADR-048 / ADR-049 / ADR-050)
+# ---------------------------------------------------------------------------
+
+
+def list_submitted_attempts() -> list[QuizAttempt]:
+    """
+    Return all Attempts with status='submitted', oldest-first (FIFO processing).
+
+    ADR-049 §Decision: the grading processor polls this to find Attempts to grade.
+    Does NOT return grading_failed Attempts — they are not re-processed (ADR-049).
+    SQL stays here (MC-10). No user_id (MC-7).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT attempt_id, quiz_id, status, created_at, submitted_at, graded_at, grading_error "
+            "FROM quiz_attempts WHERE status = 'submitted' "
+            "ORDER BY attempt_id ASC",
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [_row_to_quiz_attempt(row) for row in rows]
+
+
+def mark_attempt_grading(attempt_id: int) -> None:
+    """
+    Transition a Quiz Attempt from 'submitted' to 'grading'.
+
+    ADR-049 §Decision: the grading processor calls this before invoking the
+    grade_attempt workflow. Mirrors mark_quiz_generating (ADR-037).
+    SQL stays here (MC-10). No user_id (MC-7).
+    """
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE quiz_attempts SET status = 'grading' WHERE attempt_id = ?",
+            (attempt_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_attempt_graded(attempt_id: int) -> None:
+    """
+    Transition a Quiz Attempt from 'grading' to 'graded'.
+
+    ADR-050: called inside the save_attempt_grade transaction after all
+    attempt_questions.is_correct rows are written and the grades row is inserted.
+    Not intended to be called directly by the processor — save_attempt_grade
+    calls it atomically.
+    SQL stays here (MC-10). No user_id (MC-7).
+    """
+    now = _utc_now_iso()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE quiz_attempts SET status = 'graded', graded_at = ? "
+            "WHERE attempt_id = ?",
+            (now, attempt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_attempt_grading_failed(attempt_id: int, *, error: str | None = None) -> None:
+    """
+    Transition a Quiz Attempt to 'grading_failed' and persist the optional error detail.
+
+    ADR-049 §Decision (failure paths): called when any validation or subprocess step
+    fails. Mirrors mark_quiz_generation_failed (ADR-037).
+    MC-5: no fabricated Grade; the failure is persisted honestly.
+    SQL stays here (MC-10). No user_id (MC-7).
+    """
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE quiz_attempts SET status = 'grading_failed', grading_error = ? "
+            "WHERE attempt_id = ?",
+            (error, attempt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_attempt_grade(
+    attempt_id: int,
+    *,
+    per_question_explanations: dict[int, str],
+    weak_topics: list[str],
+    recommended_sections: list[str],
+) -> "Grade":
+    """
+    Persist the Grade for a graded Attempt — fully transactional.
+
+    ADR-050 §Transactional save:
+    All within one connection (autocommit off):
+      1. UPDATE attempt_questions SET is_correct = ?, explanation = ?
+         for each question_id in per_question_explanations.
+         is_correct is derived from test_passed:
+           test_passed=True  → is_correct=1
+           test_passed=False → is_correct=0
+           test_passed=None  → is_correct=0   (not-run = not correct)
+         Raises ValueError if any question_id is not in the Attempt's rows.
+      2. SELECT SUM(is_correct) to recompute the score (never trusts the
+         workflow's claimed score — ADR-050 §Score cross-check).
+      3. INSERT INTO grades (attempt_id, score, weak_topics,
+         recommended_sections, graded_at).
+      4. UPDATE quiz_attempts SET status='graded', graded_at=<now>.
+      5. COMMIT.
+
+    On any error: ROLLBACK (caller catches → mark_attempt_grading_failed).
+    MC-5: either ALL commits or NOTHING — no partial Grade.
+    SQL stays here (MC-10). No user_id (MC-7).
+
+    Returns the persisted Grade dataclass.
+    """
+    now = _utc_now_iso()
+    weak_topics_str = "|".join(weak_topics) if weak_topics else ""
+    recommended_sections_str = "|".join(recommended_sections) if recommended_sections else ""
+
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN")
+
+        # Step 1: validate all question_ids are in the Attempt's rows
+        aq_rows = conn.execute(
+            "SELECT question_id, test_passed FROM attempt_questions WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchall()
+        attempt_question_ids = {row["question_id"] for row in aq_rows}
+        test_passed_map = {row["question_id"]: row["test_passed"] for row in aq_rows}
+
+        provided_ids = set(per_question_explanations.keys())
+        if provided_ids != attempt_question_ids:
+            missing = attempt_question_ids - provided_ids
+            extra = provided_ids - attempt_question_ids
+            raise ValueError(
+                f"per_question_explanations question_id mismatch: "
+                f"missing={missing!r}, extra={extra!r}"
+            )
+
+        # Step 2: UPDATE attempt_questions with is_correct and explanation
+        for question_id, explanation in per_question_explanations.items():
+            raw_passed = test_passed_map[question_id]
+            # is_correct: True→1, False→0, None→0 (not-run = not correct)
+            is_correct = 1 if raw_passed else 0
+            conn.execute(
+                "UPDATE attempt_questions SET is_correct = ?, explanation = ? "
+                "WHERE attempt_id = ? AND question_id = ?",
+                (is_correct, explanation, attempt_id, question_id),
+            )
+
+        # Step 3: recompute score = SUM(is_correct) — never trust workflow's score
+        score_row = conn.execute(
+            "SELECT SUM(is_correct) FROM attempt_questions WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+        score = score_row[0] if score_row[0] is not None else 0
+
+        # Step 4: INSERT grades row
+        conn.execute(
+            "INSERT INTO grades (attempt_id, score, weak_topics, recommended_sections, graded_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (attempt_id, score, weak_topics_str, recommended_sections_str, now),
+        )
+
+        # Step 5: UPDATE quiz_attempts to 'graded'
+        conn.execute(
+            "UPDATE quiz_attempts SET status = 'graded', graded_at = ? "
+            "WHERE attempt_id = ?",
+            (now, attempt_id),
+        )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
+    else:
+        conn.close()
+
+    return Grade(
+        attempt_id=attempt_id,
+        score=score,
+        weak_topics=weak_topics,
+        recommended_sections=recommended_sections,
+        graded_at=now,
+    )
+
+
+def get_grade_for_attempt(attempt_id: int) -> "Grade | None":
+    """
+    Return the Grade aggregate for a graded Attempt, or None if not yet graded.
+
+    ADR-051 §Route: the GET .../take route calls this for a 'graded' Attempt
+    to obtain the aggregate score, weak_topics, and recommended_sections for
+    the template context variable `grade`.
+    SQL stays here (MC-10). No user_id (MC-7).
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT attempt_id, score, weak_topics, recommended_sections, graded_at "
+            "FROM grades WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return None
+
+    raw_weak = row["weak_topics"] or ""
+    raw_rec = row["recommended_sections"] or ""
+    return Grade(
+        attempt_id=row["attempt_id"],
+        score=row["score"],
+        weak_topics=[t for t in raw_weak.split("|") if t],
+        recommended_sections=[t for t in raw_rec.split("|") if t],
+        graded_at=row["graded_at"],
+    )

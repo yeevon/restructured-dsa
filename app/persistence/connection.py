@@ -72,11 +72,13 @@ CREATE INDEX IF NOT EXISTS idx_section_completions_chapter_id
 -- ---------------------------------------------------------------------------
 
 -- A Quiz: scoped to exactly one Section (manifest §5/§6/§7, MC-2).
+-- created_at: DEFAULT (current UTC ISO string) so test helpers that INSERT
+--   without providing created_at still satisfy the NOT NULL constraint.
 CREATE TABLE IF NOT EXISTS quizzes (
     quiz_id    INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id TEXT    NOT NULL,
     status     TEXT    NOT NULL DEFAULT 'requested',
-    created_at TEXT    NOT NULL
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z')
 );
 CREATE INDEX IF NOT EXISTS idx_quizzes_section_id ON quizzes (section_id);
 
@@ -87,6 +89,8 @@ CREATE INDEX IF NOT EXISTS idx_quizzes_section_id ON quizzes (section_id);
 --     pre-TASK-016 rows have test_suite IS NULL without error.
 --   preamble = shared struct/class/header shapes (ADR-045/ADR-046); nullable so
 --     pre-TASK-018 rows have preamble IS NULL without error.
+--   created_at: DEFAULT (current UTC ISO string) so test helpers that INSERT
+--     without providing created_at still satisfy the NOT NULL constraint.
 -- NO choice/recall/describe columns.
 CREATE TABLE IF NOT EXISTS questions (
     question_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +99,7 @@ CREATE TABLE IF NOT EXISTS questions (
     topics      TEXT    NOT NULL DEFAULT '',
     test_suite  TEXT,
     preamble    TEXT,
-    created_at  TEXT    NOT NULL
+    created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z')
 );
 CREATE INDEX IF NOT EXISTS idx_questions_section_id ON questions (section_id);
 
@@ -111,13 +115,15 @@ CREATE INDEX IF NOT EXISTS idx_quiz_questions_question_id ON quiz_questions (que
 
 -- A Quiz Attempt (manifest §8).
 -- status enum names a failure state (MC-5): 'grading_failed'.
+-- grading_error: nullable — NULL until a grading_failed transition (ADR-050).
 CREATE TABLE IF NOT EXISTS quiz_attempts (
-    attempt_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    quiz_id      INTEGER NOT NULL REFERENCES quizzes (quiz_id),
-    status       TEXT    NOT NULL DEFAULT 'in_progress',
-    created_at   TEXT    NOT NULL,
-    submitted_at TEXT,
-    graded_at    TEXT
+    attempt_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    quiz_id       INTEGER NOT NULL REFERENCES quizzes (quiz_id),
+    status        TEXT    NOT NULL DEFAULT 'in_progress',
+    created_at    TEXT    NOT NULL,
+    submitted_at  TEXT,
+    graded_at     TEXT,
+    grading_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_id ON quiz_attempts (quiz_id);
 
@@ -143,6 +149,18 @@ CREATE INDEX IF NOT EXISTS idx_attempt_questions_question_id ON attempt_question
 -- (list_attempt_questions / save_attempt_responses all filter by attempt_id).
 -- CREATE INDEX IF NOT EXISTS = no migration trigger (ADR-022 §Migration story).
 CREATE INDEX IF NOT EXISTS idx_attempt_questions_attempt_id ON attempt_questions (attempt_id);
+
+-- Grade aggregate table (ADR-050).
+-- One row per graded Attempt; attempt_id is both PK and FK to quiz_attempts.
+-- weak_topics / recommended_sections: '|'-delimited TEXT (mirrors questions.topics).
+-- graded_at: ISO-8601 UTC string (filled by save_attempt_grade).
+CREATE TABLE IF NOT EXISTS grades (
+    attempt_id            INTEGER PRIMARY KEY REFERENCES quiz_attempts (attempt_id),
+    score                 INTEGER NOT NULL,
+    weak_topics           TEXT    NOT NULL DEFAULT '',
+    recommended_sections  TEXT    NOT NULL DEFAULT '',
+    graded_at             TEXT    NOT NULL
+);
 """
 
 
@@ -209,6 +227,30 @@ def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
     if "test_run_at" not in aq_cols:
         conn.execute("ALTER TABLE attempt_questions ADD COLUMN test_run_at TEXT")
         conn.commit()
+
+    # --- quiz_attempts.grading_error (ADR-050 §Schema) ---
+    # Nullable column for the grading error detail (debugging aid per MC-5).
+    # NULL until a grading_failed transition.
+    cur = conn.execute("PRAGMA table_info(quiz_attempts)")
+    qa_cols = {row[1] for row in cur.fetchall()}
+    if "grading_error" not in qa_cols:
+        conn.execute("ALTER TABLE quiz_attempts ADD COLUMN grading_error TEXT")
+        conn.commit()
+
+    # --- grades table (ADR-050 §Schema) ---
+    # CREATE TABLE IF NOT EXISTS is idempotent; also added to _SCHEMA_SQL above.
+    # This additive migration ensures existing DBs that pre-date TASK-019 get
+    # the grades table without a destructive schema reset.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS grades (
+            attempt_id            INTEGER PRIMARY KEY REFERENCES quiz_attempts (attempt_id),
+            score                 INTEGER NOT NULL,
+            weak_topics           TEXT    NOT NULL DEFAULT '',
+            recommended_sections  TEXT    NOT NULL DEFAULT '',
+            graded_at             TEXT    NOT NULL
+        )
+    """)
+    conn.commit()
 
 
 def get_connection() -> sqlite3.Connection:

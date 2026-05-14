@@ -278,3 +278,95 @@ pre.quiz-take-preamble {
   white-space: pre;
   word-break: normal;
 }
+
+/* ---------------------------------------------------------------------------
+   TASK-019 / ADR-051 additions — graded-state and grading_failed-state
+   quiz-take-* namespace per ADR-008
+   --------------------------------------------------------------------------- */
+
+/* ---- Aggregate grade block (graded state) ---- */
+.quiz-take-grade {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: #eef5f0;
+  border: 1px solid #8cbba8;
+  border-radius: 4px;
+  color: #1a3a2a;
+}
+
+.quiz-take-grade-score {
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+}
+
+.quiz-take-grade-weak-topics {
+  margin-bottom: 0.75rem;
+}
+
+.quiz-take-grade-weak-topics ul,
+.quiz-take-grade-recommended-sections ul {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+}
+
+.quiz-take-grade-recommended-sections {
+  margin-bottom: 0;
+}
+
+/* ---- Per-question correctness indicator modifier classes ---- */
+/* Applied as an additional class on .quiz-take-question in the graded branch. */
+.quiz-take-question-correct {
+  border-color: #8cbba8;
+  background: #f4fbf7;
+}
+
+.quiz-take-question-incorrect {
+  border-color: #d4a090;
+  background: #fdf6f4;
+}
+
+/* ---- LLM per-question explanation block ---- */
+.quiz-take-explanation {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: #f0f4f8;
+  border-left: 3px solid #5b7a9c;
+  border-radius: 0 3px 3px 0;
+  font-size: 0.9rem;
+  color: #1a2a3a;
+  line-height: 1.5;
+}
+
+/* ---- Grading-failed honest failure block ---- */
+.quiz-take-grading-failed {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: #fff8f0;
+  border: 1px solid #e0a060;
+  border-radius: 4px;
+  color: #3a2010;
+}
+
+.quiz-take-grading-failed-summary {
+  margin: 0 0 0.75rem;
+}
+
+.quiz-take-grading-failed-detail {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #5a4030;
+}
+
+.quiz-take-grading-failed-detail pre {
+  background: #f5f0ea;
+  border: 1px solid #d4cbba;
+  border-radius: 3px;
+  padding: 0.4rem 0.6rem;
+  margin: 0.25rem 0 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 10rem;
+  overflow: auto;
+}

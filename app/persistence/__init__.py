@@ -48,6 +48,16 @@ Public API exported by this package:
   - get_question(question_id) -> Question | None — accessor for a Question by id
   - save_attempt_test_result(attempt_id, question_id, *, passed, status, output,
                               run_at=None) -> None — write test-run result columns
+
+  ADR-048 / ADR-049 / ADR-050 Grading slice (TASK-019):
+  - Grade                                       — dataclass for a single grades row
+  - list_submitted_attempts() -> list[QuizAttempt]
+  - mark_attempt_grading(attempt_id) -> None
+  - mark_attempt_graded(attempt_id) -> None
+  - mark_attempt_grading_failed(attempt_id, *, error=None) -> None
+  - save_attempt_grade(attempt_id, *, per_question_explanations, weak_topics,
+                        recommended_sections) -> Grade
+  - get_grade_for_attempt(attempt_id) -> Grade | None
 """
 
 from app.persistence.connection import init_schema
@@ -61,6 +71,7 @@ from app.persistence.section_completions import (
     count_complete_sections_per_chapter,
 )
 from app.persistence.quizzes import (
+    Grade,
     Quiz,
     Question,
     QuizAttempt,
@@ -85,6 +96,13 @@ from app.persistence.quizzes import (
     # ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017)
     get_question,
     save_attempt_test_result,
+    # ADR-048 / ADR-049 / ADR-050 Grading slice (TASK-019)
+    list_submitted_attempts,
+    mark_attempt_grading,
+    mark_attempt_graded,
+    mark_attempt_grading_failed,
+    save_attempt_grade,
+    get_grade_for_attempt,
 )
 
 __all__ = [
@@ -125,4 +143,12 @@ __all__ = [
     # ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017)
     "get_question",
     "save_attempt_test_result",
+    # ADR-048 / ADR-049 / ADR-050 Grading slice (TASK-019)
+    "Grade",
+    "list_submitted_attempts",
+    "mark_attempt_grading",
+    "mark_attempt_graded",
+    "mark_attempt_grading_failed",
+    "save_attempt_grade",
+    "get_grade_for_attempt",
 ]

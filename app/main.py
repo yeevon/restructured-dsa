@@ -56,6 +56,8 @@ from app.persistence import (
     # ADR-042 / ADR-043 / ADR-044 In-app test runner (TASK-017)
     get_question,
     save_attempt_test_result,
+    # ADR-048 / ADR-049 / ADR-050 / ADR-051 Grading slice (TASK-019)
+    get_grade_for_attempt,
 )
 from app.sandbox import run_test_suite
 
@@ -702,17 +704,33 @@ async def take_quiz_page(
         )
         return HTMLResponse(content=html, status_code=200)
 
-    # --- Happy path: start or resume an Attempt (ADR-038 / ADR-039) ---
-    # Check the latest Attempt for this Quiz. If it is already `submitted`, show
-    # the "Submitted — grading not yet available" state without creating a new row
-    # (ADR-038: "If the Attempt is already `submitted` … render the surface in the
-    # submitted state instead of a takeable form").
+    # --- Happy path: start or resume an Attempt (ADR-038 / ADR-039 / ADR-051) ---
+    # Check the latest Attempt for this Quiz. If it is already `submitted`,
+    # `graded`, or `grading_failed`, show the corresponding state without
+    # creating a new row.
+    # ADR-051: graded and grading_failed Attempts render the appropriate state.
     latest = get_latest_attempt_for_quiz(quiz_id)
-    if latest is not None and latest.status == "submitted":
+    if latest is not None and latest.status in ("submitted", "graded", "grading_failed", "grading"):
         attempt = latest
     else:
         attempt = start_attempt(quiz_id)
     aq_list = list_attempt_questions(attempt.attempt_id)
+
+    # ADR-051 §Route: fetch the Grade aggregate for a graded Attempt.
+    # Passes `grade` to the template (None for non-graded states).
+    # MC-4: no grading invocation here — read-only fetch only.
+    grade = None
+    if attempt.status == "graded":
+        grade = get_grade_for_attempt(attempt.attempt_id)
+
+    # ADR-051: graded and grading_failed Attempts are fully read-only renders.
+    # The Notes rail adds a <form method="post"> which would violate the "no
+    # POST form" structural commitment for these states (no submit affordance
+    # of any kind on a read-only terminal state).  Passing rail_notes_context=None
+    # suppresses the Notes panel for these two branches only.
+    effective_rail_notes = rail_notes_context
+    if attempt.status in ("graded", "grading_failed"):
+        effective_rail_notes = None
 
     template = _jinja_env.get_template("quiz_take.html.j2")
     html = template.render(
@@ -723,8 +741,9 @@ async def take_quiz_page(
         quiz=quiz,
         attempt=attempt,
         attempt_questions=aq_list,
+        grade=grade,
         nav_groups=nav_groups,
-        rail_notes_context=rail_notes_context,
+        rail_notes_context=effective_rail_notes,
         back_link=back_link,
         not_ready=False,
     )
