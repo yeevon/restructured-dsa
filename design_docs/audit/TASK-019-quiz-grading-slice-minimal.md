@@ -2,7 +2,7 @@
 
 **Task file:** `design_docs/tasks/TASK-019-quiz-grading-slice-minimal.md`
 **Started:** 2026-05-13T00:00:00Z
-**Status:** Implemented
+**Status:** Committed
 **Current phase:** review
 
 ---
@@ -20,6 +20,7 @@
 | 2026-05-13T00:20:00Z | /design output gate — pass (TASK-019) | pass | /auto run — 4 ADRs moved Proposed→Accepted at Phase 2; architecture.md regenerated; quiz-grading-slice-shape.md resolved by ADR-048+049+050+051 |
 | 2026-05-13T00:20:00Z | rendered-surface verification — pass (TASK-019 graded-state take page) | pending human | /auto run — visual check post-commit; review `tests/playwright/.screenshots/` or open the graded-Attempt take page in a browser |
 | 2026-05-13T00:20:00Z | grading end-to-end sanity — pass (TASK-019) | pending human | /auto run — real-engine grading run on a real Attempt + deliberately-broken second Attempt → `grading_failed` honestly; manual exercise post-commit |
+| 2026-05-13T00:25:00Z | Commit review | auto-accepted | /auto run — reviewer READY TO COMMIT (0 blockers, 6 non-blocking observations); commit 561efb7 |
 
 ---
 
@@ -481,3 +482,29 @@ These passing tests correctly reflect pre-implementation state and are not vacuo
 - `grading end-to-end sanity — pass (TASK-019)` — `pending human` (requires a real LLM grading run on a real Attempt; by-construction human-only per task file)
 
 **Output summary:** verify phase passed; all 6 ACs covered by passing tests; conformance clean; 2 human-only Verification gates filed pending human post-commit. Ready for review + commit (Phase 6).
+
+---
+
+### Run 006 — reviewer
+
+**Time:** 2026-05-13T00:25:00Z
+
+**Staged files reviewed:** `app/main.py`, `app/persistence/__init__.py`, `app/persistence/connection.py`, `app/persistence/quizzes.py`, `app/static/quiz.css`, `app/templates/quiz_take.html.j2`, `app/workflows/grade_attempt.py` (new), `app/workflows/process_quiz_attempts.py` (new), `design_docs/architecture.md`, `design_docs/audit/TASK-019-...md` (new), 4 new ADRs (048–051), `design_docs/project_issues/quiz-grading-slice-shape.md`, `design_docs/tasks/TASK-019-...md` (new), 5 new test files.
+
+**Unstaged source/test warning:** none — working tree clean apart from staged set.
+
+**Conformance skill result:** 0 blockers, 0 warnings, 2 dormant (MC-3 mapping-source ADR pending; MC-6 path-specific ADR portion).
+
+**Architecture leaks found in .md files:** none. `architecture.md` diff is index entries (ADR-048..051) + project-structure paragraphs that summarize the four new Accepted ADRs verbatim — no claims outside an Accepted ADR.
+
+**Blocking findings:** none. (See "Non-blocking findings" for two deviations from ADR-051 positive design commitments that don't break MC rules but warrant a follow-up.)
+
+**Non-blocking findings:**
+1. **Recommended-Sections link target is broken** (`app/templates/quiz_take.html.j2:101`). ADR-051 §The graded branch §2 commits to `<a href="/lecture/{chapter_id}#section-{n-m}-end">…</a>` using ADR-031's no-relocate `-end` anchor. The template renders `<a href="#{{ sec | replace('#', '') | replace('section-', 'section-') }}">` — a same-page fragment with a no-op `replace('section-', 'section-')`, producing e.g. `href="#ch-01-cpp-refreshersection-1-1"` (broken, no element has that ID; not cross-page; missing the `-end` suffix). The test `test_take_page_graded_renders_recommended_sections_when_present` passes only because it checks for the substring `"ch-01-cpp-refresher"` in HTML, which is in the link text. Fix forward: render the URL per ADR-051's recipe.
+2. **Notes rail suppressed on `graded` / `grading_failed` states** (`app/main.py:730-733`). ADR-051 §Alternative F explicitly preserves "the three-column shell unchanged (LHS chapter rail, centered main, RHS Notes rail per ADR-029)." The implementer sets `effective_rail_notes = None` for the two new states with a rationale ("Notes rail's `<form method="post">` violates the read-only structural commitment"); this is an implementer-level architectural inference. ADR-051's "no submit form" commitment scopes to Quiz/Attempt submit affordances, not the unrelated chapter Notes form (which the `submitted` state retains without issue). Fix forward: pass `rail_notes_context` through to the template on `graded` and `grading_failed` too, matching `submitted` behavior.
+3. **Schema-level addition outside any ADR** (`app/persistence/connection.py`). `quizzes.created_at` and `questions.created_at` gained `DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z')` clauses purely to let new TASK-019 tests `INSERT INTO questions (section_id, prompt, topics, test_suite, preamble) VALUES (?, ?, ?, ?, ?)` without supplying `created_at`. Not covered by any ADR. The production persistence functions still always supply `created_at`. Fix forward: either give the tests a small helper that fills `created_at`, or record the DEFAULT change in a small additive ADR; flagged so it's not lost.
+4. **`list_submitted_attempts` ordering deviates from ADR-050** (`app/persistence/quizzes.py`). ADR-050 §Decision specifies `ORDER BY submitted_at, attempt_id`; the implementation uses `ORDER BY attempt_id ASC`. Functionally equivalent for single-user FIFO; minor.
+5. **CLAUDE.md is missing the `process_quiz_attempts` command line.** ADR-049 §Scope 8 explicitly flagged "the human owns that edit." This is a human-action item, not a code blocker; recorded so it's not lost.
+6. **Verification gates for rendered-surface and grading end-to-end are still `pending human`.** Per `/auto`'s Phase 5 convention these are filed as `pending human` and the human satisfies them post-commit (consistent with TASK-017 / TASK-018 precedent). Reviewer notes this is the expected state, not a deficiency.
+
+**Final result:** READY TO COMMIT
